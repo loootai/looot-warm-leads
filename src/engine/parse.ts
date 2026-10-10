@@ -191,10 +191,11 @@ export function parseProfile(result: unknown): ProfileData | null {
   let root: unknown = result;
   if (isRec(root)) for (const k of ["data", "result", "profile"]) if (isRec(root) && isRec(root[k])) root = root[k];
   if (!isRec(root)) return null;
+  const obj: Record<string, unknown> = root;
   const firstName = str(root, "firstName", "first_name");
   const lastName = str(root, "lastName", "last_name");
   const name = str(root, "name", "fullName", "full_name") ?? ([firstName, lastName].filter(Boolean).join(" ") || undefined);
-  const exps = ["experiences", "experience", "positions", "workExperience"].map((k) => root[k]).find(Array.isArray) as unknown[] | undefined;
+  const exps = ["experiences", "experience", "positions", "workExperience"].map((k) => obj[k]).find(Array.isArray) as unknown[] | undefined;
   const list = (exps ?? []).filter(isRec);
   const current = list.find((e) => e.isCurrent === true || e.current === true || !(e.endDate ?? e.end ?? e.endedOn ?? e.end_date)) ?? list[0];
   let company = current ? str(current, "companyName", "company_name", "company", "organization") : undefined;
