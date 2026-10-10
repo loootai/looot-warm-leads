@@ -1,0 +1,193 @@
+{
+  "icp": {
+    "description": "Heads of growth and revenue at B2B SaaS companies with 20 to 500 people.",
+    "titles": [
+      "head of growth",
+      "vp growth",
+      "head of demand generation",
+      "director of marketing",
+      "head of revenue operations",
+      "founder",
+      "cmo"
+    ],
+    "excludeTitles": [
+      "intern",
+      "student",
+      "recruiter",
+      "freelance"
+    ],
+    "seniority": [
+      "head of",
+      "vp",
+      "director",
+      "chief",
+      "founder",
+      "cmo",
+      "cro"
+    ],
+    "industries": [
+      "software",
+      "saas",
+      "internet",
+      "information technology"
+    ],
+    "countries": [],
+    "companySize": {
+      "min": 20,
+      "max": 500
+    }
+  },
+  "sources": {
+    "competitors": [],
+    "creators": [],
+    "keywords": [],
+    "posts": []
+  },
+  "triggers": {
+    "newRole": true,
+    "hiring": false,
+    "funding": false
+  },
+  "scoring": {
+    "fitMax": 40,
+    "intentMax": 60,
+    "fit": {
+      "title": 20,
+      "seniority": 8,
+      "industry": 6,
+      "location": 3,
+      "company_size": 3
+    },
+    "hotAt": 70,
+    "warmAt": 45,
+    "listMinScore": 30,
+    "repeatBonus": 0.2,
+    "newRoleDays": 90,
+    "fundingDays": 180,
+    "hiringTitles": [
+      "growth",
+      "demand",
+      "sales",
+      "revenue",
+      "marketing"
+    ],
+    "signals": {
+      "competitor_comment": {
+        "weight": 28,
+        "halfLifeDays": 21,
+        "label": "Commented on a competitor post"
+      },
+      "competitor_reaction": {
+        "weight": 14,
+        "halfLifeDays": 14,
+        "label": "Reacted to a competitor post"
+      },
+      "creator_comment": {
+        "weight": 16,
+        "halfLifeDays": 21,
+        "label": "Commented on a creator post"
+      },
+      "creator_reaction": {
+        "weight": 7,
+        "halfLifeDays": 14,
+        "label": "Reacted to a creator post"
+      },
+      "topic_post": {
+        "weight": 20,
+        "halfLifeDays": 21,
+        "label": "Posted about the topic"
+      },
+      "topic_comment": {
+        "weight": 12,
+        "halfLifeDays": 21,
+        "label": "Commented on a topic post"
+      },
+      "topic_reaction": {
+        "weight": 6,
+        "halfLifeDays": 14,
+        "label": "Reacted to a topic post"
+      },
+      "post_comment": {
+        "weight": 16,
+        "halfLifeDays": 21,
+        "label": "Commented on a watched post"
+      },
+      "post_reaction": {
+        "weight": 7,
+        "halfLifeDays": 14,
+        "label": "Reacted to a watched post"
+      },
+      "new_role": {
+        "weight": 18,
+        "halfLifeDays": 60,
+        "label": "Started a new role"
+      },
+      "hiring": {
+        "weight": 10,
+        "halfLifeDays": 45,
+        "label": "Company is hiring for a related role"
+      },
+      "funding": {
+        "weight": 10,
+        "halfLifeDays": 120,
+        "label": "Company raised funding"
+      }
+    }
+  },
+  "limits": {
+    "lookbackDays": 14,
+    "postsPerSource": 5,
+    "engagementPostsPerSource": 2,
+    "engagersPerPost": 50,
+    "maxEnrich": 60,
+    "maxTriggerCompanies": 20,
+    "concurrency": 4
+  },
+  "endpoints": {
+    "emailFind": "anysite-api-linkedin-user-email",
+    "emailVerify": "millionverifier-verify"
+  },
+  "sender": {
+    "name": "Your name",
+    "company": "Your company",
+    "offer": "what your company does, in one short phrase"
+  },
+  "messages": {
+    "noteMax": 300,
+    "templates": {
+      "default": "Hi {first_name}, I saw you {signal_phrase}. I work on {offer}. Would be good to be connected.",
+      "competitor": "Hi {first_name}, I saw you {signal_phrase}. I work on {offer}. Happy to share what we see in the space if useful.",
+      "topic_post": "Hi {first_name}, your post on {topic} caught my eye. I work on {offer}. Would be good to connect.",
+      "new_role": "Hi {first_name}, congrats on the new role at {company}. I work on {offer}. Would be good to connect.",
+      "hiring": "Hi {first_name}, I noticed {company} is hiring for {job_title}. I work on {offer}. Would be good to connect.",
+      "funding": "Hi {first_name}, congrats on the round at {company}. I work on {offer}. Would be good to connect."
+    },
+    "followUp": "Thanks for connecting, {first_name}. I work on {offer}. If it is useful for {company}, I can send a short example. If not, no problem.",
+    "emailSubject": "{company} and {topic}",
+    "emailBody": "Hi {first_name},\n\nI noticed that you {signal_phrase}. I work on {offer}.\n\nIf that is relevant for {company}, I can send a short example. If not, tell me and I will not write again.\n\n{sender_name}\n{sender_company}"
+  },
+  "outbox": {
+    "dryRun": true,
+    "dailyInvites": 20,
+    "dailyMessages": 40,
+    "dailyProfileChecks": 20,
+    "minGapSeconds": 120,
+    "maxGapSeconds": 480,
+    "workingHours": {
+      "start": 9,
+      "end": 18,
+      "days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "utcOffsetMinutes": 0
+    },
+    "followUpDelayHours": 24
+  },
+  "privacy": {
+    "retentionDays": 90
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "icp": {
+    "description": "Heads of growth at B2B SaaS companies with 20 to 500 people.",
+    "titles": ["head of growth", "vp growth", "head of demand generation"],
+    "companySize": { "min": 20, "max": 500 }
+  },
+  "sources": {
+    "competitors": [{ "name": "Your competitor", "linkedinUrl": "https://www.linkedin.com/company/your-competitor" }],
+    "creators": [{ "name": "A creator your buyers follow", "linkedinUrl": "https://www.linkedin.com/in/some-creator" }],
+    "keywords": ["your topic in two or three words"],
+    "posts": []
+  },
+  "triggers": { "newRole": true, "hiring": false, "funding": false },
+  "sender": { "name": "Your name", "company": "Your company", "offer": "what you do, in one short phrase" }
+}

@@ -1,0 +1,69 @@
+name: daily-warm-leads
+
+# Finds new warm leads once a day and writes them to the job summary and an artifact.
+# It spends nothing until you add a LOOOT_TOKEN repository secret. It never sends anything to LinkedIn or by email.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      max_spend:
+        description: "Spend cap in dollars for this run"
+        required: false
+        default: "1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-warm-leads
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LOOOT_TOKEN: ${{ secrets.LOOOT_TOKEN }}
+      WARM_DIR: .looot-warm
+      MAX_SPEND: ${{ inputs.max_spend || '1' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - name: Install (no install scripts)
+        run: npm ci --ignore-scripts
+      - name: Restore the list from the last run
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .looot-warm
+          key: warm-state-restore
+          restore-keys: warm-state-
+      - name: Quote the run (free, no call)
+        run: npm run warm -- run --dry-run
+      - name: Find new warm leads
+        if: env.LOOOT_TOKEN != ''
+        run: npm run warm -- run --since-last --max-spend "$MAX_SPEND" --out out
+      - name: Say why nothing ran
+        if: env.LOOOT_TOKEN == ''
+        run: echo "::notice::The LOOOT_TOKEN secret is not set, so no looot call was made and nothing was spent. Add it under Settings, Secrets and variables, Actions."
+      - name: Write the job summary
+        if: env.LOOOT_TOKEN != ''
+        run: |
+          for f in out/new-*.md; do
+            [ -f "$f" ] && cat "$f" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Save the list for the next run
+        if: env.LOOOT_TOKEN != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .looot-warm
+          key: warm-state-${{ github.run_id }}
+      - name: Keep the reports for 7 days
+        if: env.LOOOT_TOKEN != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: warm-leads
+          path: out
+          retention-days: 7

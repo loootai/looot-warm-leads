@@ -1,0 +1,30 @@
+# looot-warm-leads
+
+> Open-source warm leads from LinkedIn intent signals, on looot. Input: competitor pages, creators, keywords and an ICP. Output: a ranked daily list where every score lists the signal, provider, weight, cost, date and evidence link behind it. It also finds and verifies work emails for picked leads, drafts first messages, and exports CSV and an Instantly import file. Optional LinkedIn sending goes through the user's own Unipile account.
+
+## Run it
+
+- Needs Node 20+, and LOOOT_TOKEN for real runs. Install: `npm ci --ignore-scripts`.
+- Free cost preview: `npm run warm -- run --dry-run` (no call, no charge).
+- Real run: `npm run warm -- run --max-spend 1 --since-last`. Refuses (exit 2) when the quote is above the cap or there is no token. Writes out/warm-<date>.json, .csv, .md and out/new-<date>.md, .csv.
+- Sample data, no token: `npm run warm -- run --demo` or `npm run demo` for the web UI on port 3281.
+- Emails: `npm run warm -- email --top 5 --dry-run`, then without --dry-run.
+- Exports: `npm run warm -- export --format csv|instantly|md`.
+- Exit codes: 0 done, 1 error, 2 refused.
+
+## Files
+
+- config/warm.config.json: ICP, sources, triggers, signal weights and half-lives, caps, templates. Edit this to change scoring.
+- src/engine/endpoints.ts: the looot endpoints, job ids and list prices.
+- src/engine/run.ts: discovery, enrichment, scoring. src/engine/score.ts: the scoring rules.
+- src/sender/: the optional Unipile client and the outbox with caps, approval, stop-on-reply.
+- skills/looot-warm-leads/SKILL.md: Claude Code skill.
+
+## Rules for agents
+
+- Always run --dry-run first and show the user the quote before a real run or an email lookup.
+- Never raise --max-spend without the user's word.
+- A "pending" call is not a failure. Run again the same day to collect it without a second charge.
+- Never approve or send a LinkedIn message for the user. Queue drafts and tell the user to review them in the Outbox. Sending is off while outbox.dryRun is true.
+- Honour the do-not-contact list and `warm forget` requests.
+- No paid run has been verified against real provider responses and no Unipile call has been made. Say so when reporting results.
