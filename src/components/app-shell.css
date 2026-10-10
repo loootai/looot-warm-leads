@@ -435,3 +435,165 @@
     transition: none !important;
   }
 }
+
+/* Nested list, badges */
+.ls-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.ls-badge {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--ls-accent);
+  color: #04140e;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.ls-has-sub {
+  position: relative;
+}
+.ls-row {
+  display: flex;
+  align-items: center;
+}
+.ls-row .ls-item {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.ls-item[data-section="true"] {
+  background: var(--ls-side-hover);
+  color: #ffffff;
+}
+.ls-toggle {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ls-side-mute);
+  cursor: pointer;
+}
+.ls-toggle:hover {
+  background: var(--ls-side-hover);
+  color: var(--ls-side-fg);
+}
+.ls-toggle:focus-visible {
+  outline: 2px solid var(--ls-focus);
+  outline-offset: -2px;
+}
+.ls-toggle .ls-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform 120ms;
+}
+.ls-has-sub[data-open="false"] .ls-toggle .ls-icon {
+  transform: rotate(-90deg);
+}
+.ls-sub {
+  margin: 0 0 4px 18px;
+  padding: 0 0 0 8px;
+  border-left: 1px solid var(--ls-side-line);
+}
+.ls-has-sub[data-open="false"] .ls-sub {
+  display: none;
+}
+.ls-fly-title {
+  display: none;
+}
+.ls-subitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--ls-side-mute);
+  font-size: 13px;
+  line-height: 18px;
+  text-decoration: none;
+}
+.ls-subitem:hover {
+  background: var(--ls-side-hover);
+  color: var(--ls-side-fg);
+}
+.ls-subitem[aria-current="page"] {
+  background: var(--ls-side-active);
+  color: #ffffff;
+  box-shadow: inset 3px 0 0 var(--ls-accent);
+}
+.ls-subitem:focus-visible {
+  outline: 2px solid var(--ls-focus);
+  outline-offset: -2px;
+}
+.ls-sublabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ls-viewall {
+  color: var(--ls-side-fg);
+  font-weight: 500;
+}
+@media (min-width: 1024px) {
+  .ls-subitem {
+    min-height: 34px;
+  }
+  .ls-root[data-collapsed="true"] .ls-side,
+  .ls-root[data-collapsed="true"] .ls-nav {
+    overflow: visible;
+  }
+  .ls-root[data-collapsed="true"] .ls-toggle,
+  .ls-root[data-collapsed="true"] .ls-item .ls-badge {
+    display: none;
+  }
+  .ls-root[data-collapsed="true"] .ls-sub,
+  .ls-root[data-collapsed="true"] .ls-has-sub[data-open="false"] .ls-sub {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: 0;
+    z-index: 70;
+    width: 260px;
+    margin: 0;
+    padding: 6px;
+    border: 1px solid var(--ls-side-line);
+    border-radius: 8px;
+    background: var(--ls-side);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.4);
+  }
+  .ls-root[data-collapsed="true"] .ls-sub::before {
+    content: "";
+    position: absolute;
+    left: -10px;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+  }
+  .ls-root[data-collapsed="true"] .ls-has-sub:hover > .ls-sub,
+  .ls-root[data-collapsed="true"] .ls-has-sub:focus-within > .ls-sub {
+    display: block;
+  }
+  .ls-root[data-collapsed="true"] .ls-fly-title {
+    display: block;
+    padding: 6px 10px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ls-side-mute);
+  }
+}

@@ -9,6 +9,7 @@ import "./app-shell.css";
    Icons are Lucide (ISC licence) inlined as path data, so the shell needs no icon package. */
 
 const ICONS = {
+  chevron: '<path d="m6 9 6 6 6-6"/>',
   menu: '<path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/>',
   close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   collapse: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/>',
@@ -48,7 +49,18 @@ const ICONS = {
 } as const;
 
 export type ShellIcon = keyof typeof ICONS;
-export type ShellNavItem = { href: string; label: string; icon: ShellIcon; /** Extra path prefixes that count as this item (detail pages). */ also?: string[] };
+export type ShellSubItem = { href: string; label: string; /** Count shown as a small pill, left out when 0. */ badge?: number };
+export type ShellNavItem = {
+  href: string;
+  label: string;
+  icon: ShellIcon;
+  /** Extra path prefixes that count as this item (detail pages). */
+  also?: string[];
+  /** Count shown as a small pill, left out when 0. */
+  badge?: number;
+  /** Nested list under the item. Collapsible, capped at `max` rows (default 8) with a "View all" link, and a flyout in the 64px rail. */
+  sub?: { items: ShellSubItem[]; max?: number };
+};
 export type ShellNavSection = { heading?: string; items: ShellNavItem[] };
 export type ShellSpend = { label: string; spent: string; cap?: string; /** 0 to 1, drawn as a bar. */ ratio?: number };
 export type AppShellProps = {
@@ -120,7 +132,17 @@ function flipTheme() {
   } catch {}
 }
 
-const isActive = (path: string, item: ShellNavItem) => {
+function Badge({ n }: { n?: number }) {
+  if (!n || n <= 0) return null;
+  return (
+    <span className="ls-badge">
+      <span aria-hidden="true">{n > 99 ? "99+" : n}</span>
+      <span className="ls-sr"> unread</span>
+    </span>
+  );
+}
+
+const isActive = (path: string, item: { href: string; also?: string[] }) => {
   const hit = (h: string) => (h === "/" ? path === "/" : path === h || path.startsWith(`${h}/`));
   return hit(item.href) || (item.also ?? []).some(hit);
 };
@@ -135,8 +157,9 @@ export function AppShell({ appName, nav, githubHref, docsHref = "https://docs.lo
   const menuRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
 
-  const items = nav.flatMap((s) => s.items);
+  const items = nav.flatMap((s) => s.items.flatMap((i) => [i, ...(i.sub?.items ?? [])]));
   const current = items.filter((i) => isActive(path, i)).sort((a, b) => b.href.length - a.href.length)[0];
+  const [shut, setShut] = useState<Record<string, boolean>>({});
   const title = current?.label ?? appName;
   const showAction = primaryAction && !(current && current.href === primaryAction.href);
 
@@ -212,13 +235,57 @@ export function AppShell({ appName, nav, githubHref, docsHref = "https://docs.lo
               {section.heading && <p className="ls-group ls-label">{section.heading}</p>}
               <ul>
                 {section.items.map((item) => {
-                  const active = isActive(path, item);
+                  const kids = item.sub?.items;
+                  const kidOn = kids?.find((k) => isActive(path, k));
+                  const active = isActive(path, item) && !kidOn;
+                  if (!kids) {
+                    return (
+                      <li key={item.href}>
+                        <Link href={item.href} className="ls-item" aria-current={active ? "page" : undefined} title={item.label} onClick={close}>
+                          <Icon name={item.icon} />
+                          <span className="ls-label">{item.label}</span>
+                          <Badge n={item.badge} />
+                        </Link>
+                      </li>
+                    );
+                  }
+                  const max = item.sub?.max ?? 8;
+                  const shown = kids.slice(0, max);
+                  if (kidOn && !shown.includes(kidOn)) shown[shown.length - 1] = kidOn;
+                  const isOpen = !shut[item.href];
+                  const listId = `ls-sub-${item.href.replace(/\W+/g, "-")}`;
                   return (
-                    <li key={item.href}>
-                      <Link href={item.href} className="ls-item" aria-current={active ? "page" : undefined} title={item.label} onClick={close}>
-                        <Icon name={item.icon} />
-                        <span className="ls-label">{item.label}</span>
-                      </Link>
+                    <li key={item.href} className="ls-has-sub" data-open={isOpen ? "true" : "false"}>
+                      <div className="ls-row">
+                        <Link href={item.href} className="ls-item" aria-current={active ? "page" : undefined} aria-expanded={isOpen} aria-controls={listId} data-section={kidOn ? "true" : undefined} title={item.label} onClick={close}>
+                          <Icon name={item.icon} />
+                          <span className="ls-label">{item.label}</span>
+                          <Badge n={item.badge} />
+                        </Link>
+                        <button type="button" className="ls-toggle" onClick={() => setShut((c) => ({ ...c, [item.href]: isOpen }))} aria-expanded={isOpen} aria-controls={listId} aria-label={`${isOpen ? "Collapse" : "Expand"} ${item.label} list`}>
+                          <Icon name="chevron" />
+                        </button>
+                      </div>
+                      <ul id={listId} className="ls-sub" aria-label={`${item.label} list`}>
+                        <li className="ls-fly-title" aria-hidden="true">
+                          {item.label}
+                        </li>
+                        {shown.map((k) => (
+                          <li key={k.href}>
+                            <Link href={k.href} className="ls-subitem" aria-current={k === kidOn ? "page" : undefined} title={k.label} onClick={close}>
+                              <span className="ls-sublabel">{k.label}</span>
+                              <Badge n={k.badge} />
+                            </Link>
+                          </li>
+                        ))}
+                        {kids.length > max && (
+                          <li>
+                            <Link href={item.href} className="ls-subitem ls-viewall" onClick={close}>
+                              View all ({kids.length})
+                            </Link>
+                          </li>
+                        )}
+                      </ul>
                     </li>
                   );
                 })}

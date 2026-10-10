@@ -36,7 +36,7 @@ function NameUrlList({ title, hint, rows, onChange, namePh, urlPh }: { title: st
       <div className="space-y-2">
         {rows.map((r, i) => (
           <div key={i} className="flex gap-2">
-            <input aria-label={`${title} name`} placeholder={namePh} value={r.name} onChange={(e) => onChange(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} className={`${inputCls} mt-0 w-1/3`} />
+            <input aria-label={`${title} name`} placeholder={namePh} value={r.name} onChange={(e) => onChange(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} className={`${inputCls} mt-0 w-1/3! shrink-0`} />
             <input aria-label={`${title} LinkedIn URL`} placeholder={urlPh} value={r.linkedinUrl} onChange={(e) => onChange(rows.map((x, j) => (j === i ? { ...x, linkedinUrl: e.target.value } : x)))} className={`${inputCls} mt-0 flex-1`} />
             <Btn aria-label="Remove" onClick={() => onChange(rows.filter((_, j) => j !== i))}><X size={14} /></Btn>
           </div>
