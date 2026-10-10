@@ -12,7 +12,7 @@ It is a local tool: a Next.js app, a CLI and a daily GitHub Actions workflow on 
 
 It does not log in to LinkedIn, does not use a LinkedIn session cookie, and does not automate a browser. The intent data comes from public-data providers through looot. The optional LinkedIn sending goes only through Unipile's hosted auth.
 
-Nothing was run against live looot or Unipile accounts when this was built. See [what is not tested](#what-is-not-tested).
+Nothing was run against live looot or Unipile accounts when this was built. See [status](#status).
 
 ## What Gojiberry does, as read on 2026-10-10
 
@@ -47,36 +47,122 @@ Sources: gojiberry.ai home page and blog index, plus review summaries from Sales
 | Hosted, 3 minute setup | No. You run it. |
 | 15+ signals | 12 signal kinds from 7 sources, listed below. |
 
-## Quick start
+## What you need
 
-Needs Node 20 or later.
+- Node 22.13 or newer. Vitest 5 needs 22.12 and ESLint 10 needs 22.13 on the 22 line, so the old floor of Node 20 is too low for the tests and lint. The daily workflow uses Node 24 and the checks below ran on Node 24.18. The repo has no `engines` field or `.nvmrc`.
+- npm, which comes with Node.
+- For the demo, `--dry-run` and the tests, nothing else. No account, no token.
+- For a real run, a looot account and an agent token.
+  1. Sign up at https://looot.ai/auth/sign-up.
+  2. Get a token. Run `npm i -g looot` then `looot login`, which opens a browser approval. Or open the looot web app, go to Settings, "Agent tokens" and create one. See https://docs.looot.ai/get-started/sign-in.
+  3. With no browser (CI, a server), create the token in Settings, "Agent tokens", then `export LOOOT_TOKEN=...`.
+  4. The token needs the scopes `runs.execute`, `catalog.read`, `runs.read` and `usage.read`.
+  5. A run needs a funded balance. The minimum top-up is $5, and signing up adds no credit. See https://docs.looot.ai/money.
+- Optional accounts, only if you use the feature. A [Unipile](https://www.unipile.com) account for LinkedIn sending (paid, see below). An Anthropic API key for the LLM rewrite of drafts. Nothing else. There is no Supabase, no sign-in and no database.
+
+## Try it in one minute
 
 ```bash
 git clone https://github.com/loootai/looot-warm-leads.git
 cd looot-warm-leads
 npm ci --ignore-scripts
-npm run demo            # web UI on http://localhost:3281, sample data, no accounts, no token
-npm run warm -- run --demo   # the same engine from the CLI, writes ./out
+npm run demo            # web UI on http://localhost:3281
 ```
 
-Demo mode runs the real engine on invented people and companies, with a stand-in for looot and for Unipile. It makes no network call. Costs shown in demo mode are the list price, booked as simulated spend.
-
-For a real run, edit `config/warm.config.json` (or use the Sources and ICP pages), then:
+Open http://localhost:3281. It shows invented people and companies, makes no network call and needs no token or account. Stop it with Ctrl+C. The same engine from the CLI, writing reports to `./out`:
 
 ```bash
-export LOOOT_TOKEN=...                          # looot dashboard, Settings, Agent tokens
-npm run warm -- run --dry-run                    # prints the list-price cost, makes no call
-npm run warm -- run --max-spend 1 --since-last   # runs, writes ./out/warm-<date>.{json,csv,md} and new-<date>.{md,csv}
+npm run warm -- run --demo
+```
+
+Demo mode runs the real engine with a stand-in for looot and for Unipile. Costs shown are list prices, booked as simulated spend.
+
+## Run it with your own data
+
+The CLI reads variables from the shell environment, not from a file. `npm run dev` also loads `.env.local`, which Next.js does on its own, so for the web UI you can copy the template. Its optional lines are commented out, because an empty value would override the default:
+
+```bash
+cp .env.example .env.local     # web UI only. For the CLI, export the variables instead.
+```
+
+Every environment variable the code reads:
+
+| Name | Required | What it does | Where to get it |
+| --- | --- | --- | --- |
+| `LOOOT_TOKEN` | For a real run or an email lookup. Not for `--demo` or `--dry-run`. | Agent token sent to the looot API. | See "What you need". |
+| `LOOOT_API_URL` | No | Overrides the looot API base URL. Default `https://api.looot.ai`. | Leave unset. |
+| `WARM_DIR` | No | Folder for saved state. Default `.looot-warm`. | Your choice. |
+| `WARM_CONFIG` | No | Config file to use. Same as `--config`. Default `$WARM_DIR/config.json`, then `config/warm.config.json`. | Your choice. |
+| `WARM_DEMO` | No | `1` runs on sample data with no network. Same as `--demo`. `npm run demo` sets it. | Set by the script. |
+| `UNIPILE_DSN` | For LinkedIn sending | Your Unipile API host, for example `api1.unipile.com:13111`. | Unipile dashboard. |
+| `UNIPILE_API_KEY` | For LinkedIn sending | Sent as the `X-API-KEY` header. | Unipile dashboard. |
+| `UNIPILE_ACCOUNT_ID` | No | The connected LinkedIn account. If unset, the account id from the Unipile callback is used. | Unipile dashboard. |
+| `UNIPILE_WEBHOOK_SECRET` | For the webhook | The webhook accepts a request only if its `Unipile-Auth` header equals this value. | Make up a long random string. |
+| `WARM_LLM` | No | `anthropic` switches on the LLM rewrite of drafts. All three LLM variables must be set. | You set it. |
+| `ANTHROPIC_API_KEY` | With `WARM_LLM` | Key for the Anthropic API. | Anthropic console. |
+| `WARM_LLM_MODEL` | With `WARM_LLM` | Model name sent to the Anthropic API. | Anthropic docs. |
+
+Set your sources. Copy the shape from `examples/sources.example.json` into `config/warm.config.json` (or use the Sources and ICP pages in the web UI, which save to `.looot-warm/config.json`). A config file only has to name what it changes; the rest comes from the defaults. Check it:
+
+```
+$ npm run warm -- config
+Config is valid. 0 competitors, 0 creators, 0 keywords, 0 watched posts. Triggers: newRole.
+```
+
+The quote comes first. A dry run needs no token. It reads current prices from the free public catalog, so it needs network access. With the example file this is the real output:
+
+```
+$ npm run warm -- run --dry-run --config examples/sources.example.json
+  Competitor page posts          scrapecreators linkedin.company.posts      $0.00188 x    1 =  $0.00188
+  Creator posts                  harvestapi     linkedin.person.posts        $0.0040 x    1 =   $0.0040
+  Topic post search              harvestapi     linkedin.post.search         $0.0040 x    1 =   $0.0040
+  Post comments and reactions    fetchin        linkedin.post.engagement     $0.0030 x    6 =   $0.0180
+  Profile read                   fetchin        linkedin.person.profile      $0.0015 x   60 =   $0.0900
+  Company read                   fetchin        linkedin.company.profile     $0.0015 x   60 =   $0.0900
+  Upper bound                                                                                   $0.21
+  Prices: read from the public looot catalog
+Dry run. No call was made.
+```
+
+Then the real run:
+
+```bash
+export LOOOT_TOKEN=...
+npm run warm -- run --max-spend 1 --since-last   # writes ./out/warm-<date>.{json,csv,md} and new-<date>.{md,csv}
 npm run warm -- leads --limit 20
 npm run warm -- email --top 5 --dry-run          # quote for finding and verifying emails
 npm run warm -- email --top 5 --max-spend 0.5
 npm run warm -- export --format instantly        # only leads with a verified email
-npm run dev                                      # the web UI on your own data
+npm run dev                                      # the web UI on your own data, http://localhost:3000
 ```
 
-`examples/sources.example.json` shows the shape of a config with sources. A config file only has to name what it changes; the rest comes from the defaults.
+Without a token a real run prints `LOOOT_TOKEN is not set. Use --dry-run to see the cost, or --demo for sample data.` and exits with code 2. Other exit codes are 0 for done and 1 for an error.
 
-Exit codes: 0 done, 1 error, 2 refused (quote above the cap, no token, no sources).
+State (leads, outbox, do-not-contact hashes) is the JSON file `.looot-warm/state.json`. Reports go to `out/`, or to `--out <dir>`.
+
+## Spending
+
+- Every paid action shows its quote first, in the Run panel, in the email quote and with `--dry-run`.
+- The run cap is `--max-spend`. The default is $2 for a run and $1 for emails. Before each call the list price is reserved against the cap, so spend cannot pass it. A quote above the cap is refused (exit code 2) unless you pass `--partial`.
+- A typical run is $0.25 at most for 3 competitor pages, 2 creators and 3 keywords with only the new-role trigger, and $0.65 at most with hiring and funding triggers. See [what a typical run costs](#what-a-typical-run-costs). Emails cost $0.0054 per lead at most and are always quoted separately.
+- Every call carries a stable idempotency key built from the endpoint, the input and the day (emails: lead and step). Running again the same day replays finished calls at no charge.
+- A run still in progress when waiting stops is "pending", never "failed at $0". It is counted separately and collected by running again the same day.
+- A failed call is not charged. A 401 or 402 from looot stops all later calls in the run.
+
+## Deploy
+
+There is no `vercel.json` and no Supabase. The app keeps its state in the JSON file `.looot-warm/state.json` (`WARM_DIR`). Vercel's filesystem does not persist between requests, so a Vercel deploy would lose your leads and outbox. Run the web UI on a machine with a disk, with your own auth in front: `npm run build && npm start`, with `LOOOT_TOKEN` (and the Unipile variables, if you use them) in the environment.
+
+### Daily run on GitHub Actions
+
+`.github/workflows/daily.yml` runs every day at 06:17 UTC and on demand. It installs without install scripts, restores the list from the last run, prints the free quote, and, only if a `LOOOT_TOKEN` repository secret exists, runs `warm run --since-last`, writes the new warm leads to the job summary, saves the list for the next run, and uploads the reports for 7 days. Without the secret it spends nothing and says why. It never sends anything to LinkedIn or by email. The workflow passes `actionlint`.
+
+1. Fork or copy the repo. Put your sources and ICP in `config/warm.config.json` and commit it. The scheduled run uses the committed file, and with no sources the run step stops with "No signal sources are set".
+2. Add the repository secret `LOOOT_TOKEN` under Settings, Secrets and variables, Actions.
+3. Run it once. Open the Actions tab, pick "daily-warm-leads", click "Run workflow" and set the spend cap (default 1 dollar). Or from a terminal, `gh workflow run daily.yml -f max_spend=1`.
+4. Read the new leads in the job summary, or download the `warm-leads` artifact. The list of the previous run comes back through the Actions cache, so "new" means new since the last scheduled run.
+
+The only variable the workflow sets is `WARM_DIR=.looot-warm`. The reports contain personal data, so use a private repository.
 
 ## How a run works
 
@@ -99,7 +185,7 @@ The breakdown on a lead page lists, for every line: the signal or criterion, the
 
 ## Signals, looot jobs and prices
 
-Prices are per call at looot list price, read from the public catalog on 2026-10-10. A live run reads the current price of every endpoint before it starts, shows it in the quote, and refuses a call whose price it cannot read. The app pins one endpoint per step, so the quoted price is the price charged. All response parsing is written from each endpoint's documented parameters and description, see [what is not tested](#what-is-not-tested).
+Prices are per call at looot list price, read from the public catalog on 2026-10-10. A live run reads the current price of every endpoint before it starts, shows it in the quote, and refuses a call whose price it cannot read. The app pins one endpoint per step, so the quoted price is the price charged. All response parsing is written from each endpoint's documented parameters and description, see [status](#status).
 
 | Used for | looot job | Endpoint | Per call |
 |---|---|---|---|
@@ -144,14 +230,6 @@ For 3 competitor pages, 2 creators and 3 keywords with the defaults (2 top posts
 
 The run usually costs less: it reads fewer profiles when the sources return fewer people, and people already read are not read again. A failed call costs nothing. Emails cost $0.0054 per lead at most ($0.003598 to find, $0.00178 to verify, the verify only when an address came back). Email lookups are separate and always quoted first. `npm run warm -- run --dry-run` prints the exact table for your config.
 
-## Money rules
-
-- Every paid action shows its quote first: the Run panel, the email quote, and `--dry-run`.
-- A per-run spend cap, `--max-spend` (default $2 for a run, $1 for emails). Before each call the list price is reserved against the cap, so spend cannot pass it. A quote above the cap is refused unless you pass `--partial`.
-- Every call carries a stable idempotency key built from the endpoint, the input and the day (emails: lead and step). Running again the same day replays finished calls at no charge.
-- A run still in progress when waiting stops is "pending", never "failed at $0". It is counted separately and collected by running again the same day.
-- A 401 or 402 from looot stops all later calls in the run.
-
 ## Messages, export and Instantly
 
 Drafts come from the templates in `config/warm.config.json` under `messages`, chosen by the strongest signal and filled with the person's first name, company, the signal and the one-line offer you set under `sender`. A draft that still has an unfilled placeholder, or a connection note over `messages.noteMax` (300), carries a warning. The signal the draft refers to is shown above the text.
@@ -165,6 +243,25 @@ An optional LLM rewrite runs only when `WARM_LLM=anthropic`, `ANTHROPIC_API_KEY`
 Sending is not part of looot. It goes through [Unipile](https://www.unipile.com), a paid third-party API, with your own LinkedIn account. looot's catalog has no Unipile entry (checked 2026-10-10), so this app calls Unipile directly with your own key. Without a Unipile account, use the CSV and Instantly exports.
 
 Unipile's public price, read on 2026-10-10 on unipile.com/pricing-api: EUR 49 a month minimum (USD 55) for up to 10 connected accounts, then EUR 5 per account from the 11th, billed after the fact on the peak number of linked accounts, with a 7 day free trial. The page's own FAQ example disagrees with its table in one place, so check it yourself.
+
+### Unipile setup
+
+Six steps. Each one is confirmed in the code (`src/sender/unipile.ts`, `src/cli/cli.ts`, `src/app/api/unipile/webhook/route.ts`). None has run against a live Unipile account.
+
+1. Create a Unipile account and note the DSN (your API host, with its port) and the API key from the Unipile dashboard.
+2. Export `UNIPILE_DSN` and `UNIPILE_API_KEY`, or put them in `.env.local` for the web UI. The sender stays off until both are set.
+3. Connect your LinkedIn account. Run `npm run warm -- connect` (add `--success-url <url>` to choose where Unipile sends you afterwards), or use "Connect LinkedIn on Unipile" on the Outbox page. Either prints a hosted auth link. Open it and sign in on Unipile's page.
+4. Tell the app which account to use. Export `UNIPILE_ACCOUNT_ID` with the account id shown in your Unipile dashboard. The connect commands do not register a callback URL, so the id does not arrive on its own.
+5. Replies and accepted invitations, two ways. Either run `npm run warm -- outbox sync` a few times a day at uneven times, or register webhooks. For webhooks, set `UNIPILE_WEBHOOK_SECRET` to a long random string, make the app reachable at a public HTTPS URL, and create two Unipile webhooks, one with source `messaging` (new messages) and one with source `users` (new relations). Both use `request_url` `https://<your-host>/api/unipile/webhook` and the header `Unipile-Auth` set to your secret. The app does not create them for you. The request Unipile expects, as the client in `src/sender/unipile.ts` builds it:
+
+   ```bash
+   curl -X POST "https://$UNIPILE_DSN/api/v1/webhooks" \
+     -H "X-API-KEY: $UNIPILE_API_KEY" -H "Content-Type: application/json" \
+     -d '{"source":"messaging","request_url":"https://<your-host>/api/unipile/webhook","name":"warm-leads-messages","headers":[{"key":"Content-Type","value":"application/json"},{"key":"Unipile-Auth","value":"<your secret>"}]}'
+   ```
+
+   Repeat with `"source":"users"` and another name. If `UNIPILE_DSN` already starts with `https://`, drop the `https://` in front of it.
+6. Go live, only when you want to. Review the drafts in the Outbox, approve them, set `outbox.dryRun` to `false` in the config, then send one at a time with `npm run warm -- outbox tick --live` or the "Send next now" button. Until then the sender only prints what it would send.
 
 **Sending volume is your responsibility under LinkedIn's terms.** LinkedIn limits automated activity and can restrict accounts that exceed it or look automated. Unipile publishes conservative limits (about 80 to 100 invitations a day and 200 a week on a paid account, about 100 profile reads a day, and random spacing during working hours). This app's defaults are lower, but they are only defaults: you set the numbers, and you decide what is acceptable for your account.
 
@@ -198,9 +295,36 @@ This tool stores personal data about people who have not asked you to. Keep it s
 - **GitHub Actions.** The daily workflow keeps its state in the Actions cache and the reports in a 7 day artifact, both private to the repository. Use a private repository, or delete the cache after each run.
 - **Demo data** is invented. No real person or company is in this repository.
 
-## Daily GitHub Actions workflow
+## Troubleshooting
 
-`.github/workflows/daily.yml` runs every day at 06:17 UTC and on demand. It installs without install scripts, restores the list from the last run, prints the free quote, and, only if a `LOOOT_TOKEN` repository secret exists, runs `warm run --since-last`, writes the new warm leads to the job summary, saves the list for the next run, and uploads the reports for 7 days. Without the secret it spends nothing and says why. It never sends anything to LinkedIn or by email. Commit your sources to `config/warm.config.json` first. The workflow passes `actionlint`.
+| What you see | What it means | What to do |
+| --- | --- | --- |
+| `LOOOT_TOKEN is not set. Use --dry-run to see the cost, or --demo for sample data.` (exit 2). For emails, `LOOOT_TOKEN is not set.` | No token in the environment of the CLI. | `export LOOOT_TOKEN=...` in the same shell. The CLI does not read `.env.local`. |
+| `Stopped: <message>` in the run summary, or a failed call with `looot returned HTTP 401` | looot rejected the token. A 401 stops the rest of the run. | Create a new token with the four scopes in "What you need". |
+| `Stopped: <message>`, or `looot returned HTTP 402` | The balance may be too low. The app shows whatever looot returns and stops the run on a 402. | Top up at https://docs.looot.ai/money (minimum $5) and run again. Finished calls replay free the same day. |
+| A call counted under "failed" with the run's error message, or `blocked` / `stopped` | looot blocked or stopped the run. | Open the run in the looot web app and read the reason. |
+| `Run <runId> is <status>.` and "N pending" in the summary | The provider has not finished. Pending is not a failure. | Run the same command again the same day. The finished call is collected without a second charge. |
+| `A profile came back in a shape the parser does not know (<url>).` | The profile parser did not recognise the response. | Open an issue with the raw response (see below). |
+| `The sources returned no people. Check the source URLs and keywords.` | Discovery found nothing. It can also mean a post-list or engagement response had a shape the parser skipped, because a parse that finds no rows is reported as "no data", not as a failure. | Check the URLs. If they are right, open an issue with the raw response. |
+| `No signal sources are set. Add a competitor, creator, keyword or post first.` | The config has no sources. | Fill `sources` in the config. See `examples/sources.example.json`. |
+| `The quote ($0.64) is above the cap ($0.50). Raise the cap, lower limits in the config, or pass --partial to run until the cap.` | The quote is above `--max-spend`. | Raise the cap, lower `limits`, or pass `--partial`. |
+| `Live prices could not be read from the public catalog, so no call was made. Check your network and try again.` | The free catalog was not reachable. | Check your network. |
+| `Set UNIPILE_DSN and UNIPILE_API_KEY first. You need your own Unipile account.` | `warm connect` ran without the Unipile variables. | Follow "Unipile setup". |
+| `No Unipile account is connected.` | `outbox sync` found no account id. | Set `UNIPILE_ACCOUNT_ID`. |
+| Unipile webhook gets HTTP 401 with `{"ok":false}` | `UNIPILE_WEBHOOK_SECRET` is unset, or the `Unipile-Auth` header differs from it. | Set the secret and use the same value in the webhook header. |
+
+### How to file an issue
+
+Open an issue at https://github.com/loootai/looot-warm-leads/issues with the run id (printed as `Run <runId>` for pending calls and shown in the looot run list), the command you used, and the raw response body with secrets removed.
+
+## Status
+
+- **No paid looot run was made.** The parsers for post lists, engagers, profiles, companies, jobs, funding, emails and verifier results are written from each endpoint's documented parameters and description and from fixtures I wrote. Field names in real responses may differ. A parse that finds nothing is reported as no data, not as a failure, so check the first real run by eye.
+- **No Unipile call was made.** There was no Unipile account. The client is tested against mocked HTTP built from Unipile's public docs, not against the service. The hosted auth callback, the webhook payloads and the chat flow are unverified against a live account.
+- **No Instantly import was tried.** The column format follows the field names in the `looot-instantly` repo and Instantly's documentation.
+- The web UI was exercised in demo mode and in headless Chrome screenshots. The live paths (real looot token, real Unipile) were not clicked through.
+- If a parser fails on a real response, open an issue with the raw response body (secrets removed).
+- Engagement data on LinkedIn is incomplete: providers return a sample of commenters and reactors, not all of them, and reaction dates are the post's date when the provider gives none.
 
 ## Install for agents
 
@@ -217,9 +341,9 @@ npm run warm -- leads --new
 
 `config/warm.config.json` holds everything you tune: the ICP, sources, triggers, every signal weight and half-life, the fit weights, the band thresholds, limits per run, the email endpoints, your sender text, the message templates, the outbox caps and the retention period. The web app saves edits to `.looot-warm/config.json`, which wins over the shipped file. `WARM_CONFIG=path` or `--config path` picks another file.
 
-Environment variables are in `.env.example`. The app does not read `.env` files; export them in your shell.
+Environment variables are listed in [Run it with your own data](#run-it-with-your-own-data) and in `.env.example`. The CLI does not read `.env` files; export them in your shell. The web UI loads `.env.local`.
 
-## Development
+## Develop
 
 ```bash
 npm test            # vitest, all HTTP mocked
@@ -230,14 +354,6 @@ npm run leak-scan   # secrets, private hosts, personal emails; also runs as a pr
 ```
 
 Layout: `src/engine` (looot client, meter, discovery, scoring, drafts, exports, state), `src/sender` (Unipile client and the outbox), `src/server` (service layer shared by the CLI and the API routes), `src/cli`, `src/app` and `src/components` (UI).
-
-## What is not tested
-
-- **No paid looot run was made.** The parsers for post lists, engagers, profiles, companies, jobs, funding, emails and verifier results are written from each endpoint's documented parameters and description and from fixtures I wrote. Field names in real responses may differ. A parse that finds nothing is reported as no data, not as a failure, so check the first real run by eye.
-- **No Unipile call was made.** There was no Unipile account. The client is tested against mocked HTTP built from Unipile's public docs, not against the service. The hosted auth callback, the webhook payloads and the chat flow are unverified against a live account.
-- **No Instantly import was tried.** The column format follows the field names in the `looot-instantly` repo and Instantly's documentation.
-- The web UI was exercised in demo mode and in headless Chrome screenshots. The live paths (real looot token, real Unipile) were not clicked through.
-- Engagement data on LinkedIn is incomplete: providers return a sample of commenters and reactors, not all of them, and reaction dates are the post's date when the provider gives none.
 
 ## Licence
 
