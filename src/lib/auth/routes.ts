@@ -18,6 +18,7 @@ export const ROUTES: Record<string, RouteKind> = {
   "/login": "public",
   // API
   "/api/action": "admin",
+  "/api/budget": "admin",
   "/api/export": "admin",
   "/api/health": "public",
   "/api/auth/login": "public",

@@ -1,13 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Budget, budgetFile, defaultLimits, type BudgetStatus } from "../engine/budget";
 import { loadConfig, saveConfig, type WarmConfig } from "../engine/config";
 import { DEMO_NOW, demoConfig, demoRunner } from "../engine/demo";
 import { draftFor } from "../engine/draft";
 import { emailEndpointIds, emailQuote, runEmails } from "../engine/emailStep";
 import { FALLBACK_PRICES } from "../engine/endpoints";
 import { llmRewrite } from "../engine/llm";
-import { fetchPrices, hasLoootToken, loootFromEnv, type PriceMap, type Runner } from "../engine/looot";
-import { toMicros } from "../engine/money";
+import { fetchPrices, hasLoootToken, loootFromEnv, type LoootRun, type PriceMap, type Runner } from "../engine/looot";
+import { toMicros, usd } from "../engine/money";
 import { buildQuote, runWarm } from "../engine/run";
 import { addAudit, dataDir, emptyState, forget, purge, readState, writeState, addDnc } from "../engine/state";
 import type { Lead, Quote, RunSummary, State } from "../engine/types";
@@ -28,6 +29,8 @@ export interface Ctx {
   setConfig(c: WarmConfig): void;
   read(): State;
   write(s: State): void;
+  /** The period budget file. Built from the environment when a test does not pass one. */
+  budget?: Budget;
   /** Test hooks. */
   looot?: Runner;
   sender?: SenderClient;
@@ -88,6 +91,39 @@ async function prices(ctx: Ctx, cfg: WarmConfig): Promise<{ prices: PriceMap; so
   return { prices: live.prices, source: live.source, unread: live.unread };
 }
 
+/** The period budget for this context: budget.json in WARM_DIR, starting limits from WARM_DAILY_USD and WARM_MONTHLY_USD. */
+export function getBudget(ctx: Ctx): Budget {
+  return (ctx.budget ??= new Budget(budgetFile(ctx.env), defaultLimits(ctx.env)));
+}
+
+/** Used, reserved and remaining for today and this month. Read only, so the demo can show it too. */
+export async function budgetStatus(ctx: Ctx): Promise<BudgetStatus> {
+  return getBudget(ctx).status(ctx.now());
+}
+
+/** Owner only (the route checks the session and the CSRF token). Saves the daily and monthly budget in dollars. */
+export async function setBudget(ctx: Ctx, input: { dailyUsd: unknown; monthlyUsd: unknown }): Promise<BudgetStatus> {
+  if (ctx.demo) throw new Error("Demo mode has no budget to change.");
+  const b = getBudget(ctx);
+  await b.setLimits({ dailyMicros: toMicros(Number(input.dailyUsd)), monthlyMicros: toMicros(Number(input.monthlyUsd)) });
+  return b.status(ctx.now());
+}
+
+/**
+ * Settles the runs that ended since the last look, then returns what is left. Check order for a paid action: the quote,
+ * the cap per run, this, then the calls. A runner that cannot read a run again (the demo runner) is skipped.
+ */
+async function roomLeft(ctx: Ctx, looot: Runner): Promise<BudgetStatus> {
+  const b = getBudget(ctx);
+  const read = looot.getRun?.bind(looot) as ((id: string) => Promise<LoootRun>) | undefined;
+  if (read) await b.reconcile({ getRun: read }, ctx.now());
+  return b.status(ctx.now());
+}
+
+function overBudget(what: string, quoteMicros: number, room: BudgetStatus): Error {
+  return new Error(`The ${what} (${usd(quoteMicros)}) is above what is left of the budget (${usd(room.remainingMicros)}: ${usd(room.day.remainingMicros)} today, ${usd(room.month.remainingMicros)} this month). Raise the budget on the Cost page, or wait for the period to roll over.`);
+}
+
 export function runner(ctx: Ctx): Runner {
   if (ctx.looot) return ctx.looot;
   if (ctx.demo) return demoRunner();
@@ -113,8 +149,14 @@ export async function executeRun(ctx: Ctx, o: { capUsd: number; partial?: boolea
   const quote = buildQuote(cfg, p.prices, p.source);
   if (!ctx.demo && quote.totalMicros > cap && !o.partial) throw new Error(`The quote ($${(quote.totalMicros / 1e6).toFixed(2)}) is above the cap ($${o.capUsd.toFixed(2)}). Raise the cap, lower limits in the config, or pass --partial to run until the cap.`);
   if (!cfg.sources.competitors.length && !cfg.sources.creators.length && !cfg.sources.keywords.length && !cfg.sources.posts.length) throw new Error("No signal sources are set. Add a competitor, creator, keyword or post first.");
+  const looot = runner(ctx);
+  // Check order: quote, cap per run (above), period budget, then the calls. `partial` runs until the budget is reached.
+  if (!ctx.demo) {
+    const room = await roomLeft(ctx, looot);
+    if (quote.totalMicros > room.remainingMicros && !o.partial) throw overBudget("quote", quote.totalMicros, room);
+  }
   const state = ctx.read();
-  const { summary, leads } = await runWarm({ config: cfg, looot: runner(ctx), prices: p.prices, priceSource: p.source, unpriced: p.unread, capMicros: cap, state, now: ctx.now(), demo: ctx.demo, onProgress: o.onProgress });
+  const { summary, leads } = await runWarm({ config: cfg, looot, prices: p.prices, priceSource: p.source, unpriced: p.unread, capMicros: cap, ledger: ctx.demo ? undefined : getBudget(ctx), state, now: ctx.now(), demo: ctx.demo, onProgress: o.onProgress });
   if (!ctx.demo && summary.calls.length > 0 && summary.calls.every((c) => c.status === "skipped_price")) throw new Error("Live prices could not be read from the public catalog, so no call was made. Check your network and try again.");
   state.leads = leads;
   state.lastRun = summary;
@@ -178,7 +220,7 @@ export async function quoteEmails(ctx: Ctx, ids: string[]) {
 }
 
 /** Finds and verifies emails for the picked leads. The caller shows the quote first; this refuses a quote above the cap. */
-export async function executeEmails(ctx: Ctx, ids: string[], capUsd: number): Promise<{ found: number; deliverable: number; spentMicros: number; pending: number; skippedByCap: number; aborted: string | null }> {
+export async function executeEmails(ctx: Ctx, ids: string[], capUsd: number): Promise<{ found: number; deliverable: number; spentMicros: number; pending: number; skippedByCap: number; skippedByBudget: number; budgetMessage: string | null; aborted: string | null }> {
   const cfg = ctx.getConfig();
   const state = ctx.read();
   const leads = ids.map((id) => state.leads[id]).filter(Boolean);
@@ -186,12 +228,17 @@ export async function executeEmails(ctx: Ctx, ids: string[], capUsd: number): Pr
   const q = emailQuote(leads, cfg, p.prices, p.source);
   const cap = toMicros(capUsd);
   if (!ctx.demo && q.totalMicros > cap) throw new Error(`The email quote ($${(q.totalMicros / 1e6).toFixed(2)}) is above the cap ($${capUsd.toFixed(2)}).`);
-  const r = await runEmails({ leads, config: cfg, looot: runner(ctx), prices: p.prices, unpriced: p.unread, capMicros: cap, now: ctx.now(), demo: ctx.demo });
+  const looot = runner(ctx);
+  if (!ctx.demo) {
+    const room = await roomLeft(ctx, looot);
+    if (q.totalMicros > room.remainingMicros) throw overBudget("email quote", q.totalMicros, room);
+  }
+  const r = await runEmails({ leads, config: cfg, looot, prices: p.prices, unpriced: p.unread, capMicros: cap, ledger: ctx.demo ? undefined : getBudget(ctx), now: ctx.now(), demo: ctx.demo });
   for (const [id, res] of Object.entries(r.results)) state.leads[id].email = res;
   if (r.spentMicros > 0) state.spendLog.push({ at: ctx.now().toISOString(), what: `email find and verify for ${Object.keys(r.results).length} leads`, micros: r.spentMicros });
   ctx.write(state);
   const done = Object.values(r.results);
-  return { found: done.filter((x) => x.address).length, deliverable: done.filter((x) => x.deliverable).length, spentMicros: r.spentMicros, pending: r.pending, skippedByCap: r.skippedByCap, aborted: r.aborted };
+  return { found: done.filter((x) => x.address).length, deliverable: done.filter((x) => x.deliverable).length, spentMicros: r.spentMicros, pending: r.pending, skippedByCap: r.skippedByCap, skippedByBudget: r.skippedByBudget, budgetMessage: r.budgetMessage, aborted: r.aborted };
 }
 
 // ---- sender ----

@@ -62,7 +62,8 @@ export type ShellNavItem = {
   sub?: { items: ShellSubItem[]; max?: number };
 };
 export type ShellNavSection = { heading?: string; items: ShellNavItem[] };
-export type ShellSpend = { label: string; spent: string; cap?: string; /** 0 to 1, drawn as a bar. */ ratio?: number };
+export type ShellSpendRow = { label: string; used: string; reserved: string; remaining: string; cap?: string; /** 0 to 1, used plus reserved over the budget. */ ratio?: number };
+export type ShellSpend = { title: string; rows: ShellSpendRow[]; note?: string };
 export type AppShellProps = {
   appName: string;
   nav: ShellNavSection[];
@@ -298,19 +299,26 @@ export function AppShell({ appName, nav, githubHref, docsHref = "https://docs.lo
 
         <div className="ls-foot">
           {spend && (
-            <div className="ls-spend" title={`${spend.label}: ${spend.spent}${spend.cap ? ` of ${spend.cap}` : ""}`}>
-              <p className="ls-label ls-spend-text">
-                <span>{spend.label}</span>
-                <strong>
-                  {spend.spent}
-                  {spend.cap ? ` of ${spend.cap}` : ""}
-                </strong>
-              </p>
-              {spend.ratio !== undefined && (
-                <div className="ls-meter" role="meter" aria-label={spend.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, Math.max(0, spend.ratio)) * 100)}>
-                  <span style={{ width: `${Math.round(Math.min(1, Math.max(0, spend.ratio)) * 100)}%` }} />
+            <div className="ls-spend" role="group" aria-label={spend.title} title={spend.rows.map((r) => `${r.label}: ${r.used} used, ${r.reserved} reserved, ${r.remaining} left`).join(". ")}>
+              <p className="ls-label ls-spend-title">{spend.title}</p>
+              {spend.rows.map((r) => (
+                <div key={r.label} className="ls-spend-row">
+                  <p className="ls-label ls-spend-text">
+                    <span>{r.label}</span>
+                    <strong>
+                      {r.used}
+                      {r.cap ? ` of ${r.cap}` : ""}
+                    </strong>
+                  </p>
+                  {r.ratio !== undefined && (
+                    <div className="ls-meter" role="meter" aria-label={`${r.label} budget used and reserved`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, Math.max(0, r.ratio)) * 100)}>
+                      <span style={{ width: `${Math.round(Math.min(1, Math.max(0, r.ratio)) * 100)}%` }} />
+                    </div>
+                  )}
+                  <p className="ls-label ls-spend-detail">{r.reserved} reserved, {r.remaining} left</p>
                 </div>
-              )}
+              ))}
+              {spend.note && <p className="ls-label ls-spend-detail">{spend.note}</p>}
             </div>
           )}
           {demoLabel && (

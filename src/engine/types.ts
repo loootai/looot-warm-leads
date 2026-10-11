@@ -160,7 +160,7 @@ export interface Lead {
   excluded?: string;
 }
 
-export type CallStatus = "ok" | "failed" | "pending" | "skipped_cap" | "skipped_price" | "parse_error";
+export type CallStatus = "ok" | "failed" | "pending" | "skipped_cap" | "skipped_budget" | "skipped_price" | "parse_error";
 
 export interface CallRecord {
   endpointId: string;
@@ -199,6 +199,10 @@ export interface RunSummary {
   quotedMicros: number;
   spentMicros: number;
   skippedByCap: number;
+  /** Calls not made because the period budget would have been passed. */
+  skippedByBudget?: number;
+  /** The refusal text when the period budget stopped a call. */
+  budgetMessage?: string | null;
   pendingCalls: number;
   failedCalls: number;
   aborted: string | null;

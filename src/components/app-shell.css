@@ -222,6 +222,22 @@
   color: var(--ls-side-fg);
   font-variant-numeric: tabular-nums;
 }
+.ls-spend-title {
+  margin: 0 0 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ls-side-mute);
+}
+.ls-spend-row + .ls-spend-row {
+  margin-top: 8px;
+}
+.ls-spend-detail {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--ls-side-mute);
+  font-variant-numeric: tabular-nums;
+}
 .ls-meter {
   height: 4px;
   margin-top: 6px;
@@ -411,6 +427,9 @@
   }
   .ls-root[data-collapsed="true"] .ls-meter {
     margin-top: 0;
+  }
+  .ls-root[data-collapsed="true"] .ls-spend-row + .ls-spend-row {
+    margin-top: 4px;
   }
   .ls-root[data-collapsed="true"] .ls-short {
     display: block;

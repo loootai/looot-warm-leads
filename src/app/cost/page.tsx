@@ -1,8 +1,10 @@
+import { BudgetForm } from "@/components/BudgetForm";
+import { BudgetPanel } from "@/components/BudgetPanel";
 import { Bar } from "@/components/chips";
 import { Panel } from "@/components/ui";
 import { ENDPOINTS, PRICES_AS_OF } from "@/engine/endpoints";
-import { usd, usdPrecise } from "@/engine/money";
-import { makeCtx } from "@/server/service";
+import { MICROS, usd, usdPrecise } from "@/engine/money";
+import { budgetStatus, makeCtx } from "@/server/service";
 import { requireAdminPage } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +14,7 @@ export default async function CostPage() {
   await requireAdminPage();
   const ctx = await makeCtx();
   const state = ctx.read();
+  const status = await budgetStatus(ctx);
   const run = state.lastRun;
   const steps = new Map<string, { label: string; provider: string; jobId: string; endpointId: string; ok: number; pending: number; failed: number; skipped: number; cost: number; list: number }>();
   for (const c of run?.calls ?? []) {
@@ -20,7 +23,7 @@ export default async function CostPage() {
     x.cost += c.costMicros;
     if (c.status === "ok") x.ok += 1;
     else if (c.status === "pending") x.pending += 1;
-    else if (c.status === "skipped_cap" || c.status === "skipped_price") x.skipped += 1;
+    else if (c.status === "skipped_cap" || c.status === "skipped_budget" || c.status === "skipped_price") x.skipped += 1;
     else x.failed += 1;
     steps.set(c.endpointId, x);
   }
@@ -30,15 +33,17 @@ export default async function CostPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-20 font-medium">Cost</h1>
-        <p className="text-13 text-mute">Every paid call, at looot list price. A failed call costs nothing. A call still running at the provider is pending, not failed.</p>
+        <p className="text-13 text-mute">Every paid call, at looot list price. A failed call costs nothing. A call still running at the provider is pending, not failed. A run is held to the cap per run in the config (runs ${ctx.getConfig().spend.runCapUsd.toFixed(2)}, emails ${ctx.getConfig().spend.emailCapUsd.toFixed(2)}), then to the daily and monthly budget below. Each call reserves its list price first and settles to the real cost.</p>
       </div>
+      <BudgetPanel status={status} />
+      <BudgetForm key={`${status.limits.dailyMicros}:${status.limits.monthlyMicros}`} dailyUsd={status.limits.dailyMicros / MICROS} monthlyUsd={status.limits.monthlyMicros / MICROS} disabled={ctx.demo} />
       {run ? (
         <Panel title={run.demo ? "Last run (simulated at list price, nothing charged)" : "Last run"}>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[["Quoted, upper bound", usd(run.quotedMicros)], ["Spent", usd(run.spentMicros)], ["Spend cap", usd(run.capMicros)], ["Per lead on the list", run.leads ? usdPrecise(Math.round(run.spentMicros / run.leads)) : "n/a"]].map(([k, v]) => <div key={k}><dt className="text-12 text-mute">{k}</dt><dd className="num text-20 font-medium">{v}</dd></div>)}
           </dl>
           <div className="mt-3"><Bar value={run.spentMicros} max={run.capMicros} /></div>
-          <p className="mt-2 text-12 text-mute">{run.candidates} people found, {run.enriched} profiles read, {run.leads} on the list, {run.newLeads} new. {run.pendingCalls} pending, {run.failedCalls} failed, {run.skippedByCap} skipped by the cap.</p>
+          <p className="mt-2 text-12 text-mute">{run.candidates} people found, {run.enriched} profiles read, {run.leads} on the list, {run.newLeads} new. {run.pendingCalls} pending, {run.failedCalls} failed, {run.skippedByCap} skipped by the cap, {run.skippedByBudget ?? 0} skipped by the budget.</p>
           {run.notes.map((n) => <p key={n} className="mt-1 text-12 text-amber">{n}</p>)}
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-12">

@@ -2,12 +2,13 @@ import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
-import { AppShell, type ShellNavSection } from "@/components/AppShell";
+import { AppShell, type ShellNavSection, type ShellSpend, type ShellSpendRow } from "@/components/AppShell";
+import type { PeriodStatus } from "@/engine/budget";
 import { usd } from "@/engine/money";
 import { currentCsrf, requireAdminPage } from "@/lib/auth/guard";
 import { isPublicPath } from "@/lib/auth/routes";
 import { isDemo } from "@/server/runtime";
-import { makeCtx } from "@/server/service";
+import { budgetStatus, makeCtx } from "@/server/service";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +60,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   }
   const gate = await requireAdminPage();
   const csrf = await currentCsrf();
-  const run = (await makeCtx()).read().lastRun;
+  const ctx = await makeCtx();
+  const b = await budgetStatus(ctx);
+  const row = (label: string, p: PeriodStatus): ShellSpendRow => ({ label, used: usd(p.usedMicros), reserved: usd(p.reservedMicros), remaining: usd(p.remainingMicros), cap: usd(p.limitMicros), ratio: p.limitMicros > 0 ? (p.usedMicros + p.reservedMicros) / p.limitMicros : 0 });
+  const spend: ShellSpend = { title: "Spend budget", rows: [row("Today", b.day), row("Month", b.month)], note: ctx.demo ? "Sample data, nothing charged." : b.remainingMicros <= 0 ? "Budget reached. Paid runs are refused." : undefined };
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <head>
@@ -73,7 +77,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           nav={NAV}
           demoLabel={gate.policy.mode === "open-demo" ? "Demo, no sign-in. Invented people. Nothing is called or sent." : isDemo() ? "Demo data. Invented people. Nothing is called or sent." : undefined}
           signOut={gate.policy.mode === "login"}
-          spend={run ? { label: run.demo ? "Last run, simulated" : "Spent last run", spent: usd(run.spentMicros), cap: usd(run.capMicros), ratio: run.capMicros > 0 ? run.spentMicros / run.capMicros : 0 } : undefined}
+          spend={spend}
         >
           <div className="mx-auto w-full max-w-[1200px] px-4 pb-16 pt-6 sm:px-6">{children}</div>
         </AppShell>

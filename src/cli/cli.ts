@@ -7,7 +7,7 @@ import { usd, usdPrecise } from "../engine/money";
 import type { Quote } from "../engine/types";
 import { textHash } from "../sender/outbox";
 import { unipileConfigured, unipileFromEnv } from "../sender/unipile";
-import { accountId, approve, cancel, dncAdd, ensureDrafts, executeEmails, executeRun, forgetPerson, listLeads, makeCtx, pause, plan, purgeOld, queueLeads, quoteEmails, quoteRun, sendTick, sync, unknownAction, type Ctx } from "../server/service";
+import { accountId, approve, budgetStatus, cancel, dncAdd, ensureDrafts, executeEmails, executeRun, forgetPerson, listLeads, makeCtx, pause, plan, purgeOld, queueLeads, quoteEmails, quoteRun, sendTick, sync, unknownAction, type Ctx } from "../server/service";
 
 const HELP = `looot-warm-leads: warm B2B leads from LinkedIn intent signals, on looot
 
@@ -29,7 +29,7 @@ Commands
 
 Options for run
   --max-spend <usd>   Per-run spend cap in dollars (default 2)
-  --partial           Run until the cap even when the quote is above it
+  --partial           Run until the cap or the period budget even when the quote is above it
   --dry-run           Print the list-price quote and make no call
   --since-last        Also write the leads first seen in this run to out/new-<date>.md and .csv
   --out <dir>         Where reports go (default out)
@@ -39,6 +39,7 @@ Environment
   LOOOT_TOKEN                  Your looot key. Not needed for --demo or --dry-run
   WARM_DEMO=1 or --demo        Sample data, no network, no cost
   WARM_DIR                     Where state is kept (default .looot-warm)
+  WARM_DAILY_USD, WARM_MONTHLY_USD    Starting daily and monthly budget in dollars until the owner saves one in the web UI (default 10 and 50)
   UNIPILE_DSN, UNIPILE_API_KEY, UNIPILE_ACCOUNT_ID    Optional LinkedIn sender through your own Unipile account
 `;
 
@@ -126,6 +127,10 @@ export async function main(argv: string[], env: Record<string, string | undefine
         }
         const cap = num(flags["max-spend"], 2, "--max-spend");
         if (ctx.demo) ctx.write(emptyState()); // a demo run starts from nothing so the output shows a first run
+        if (!ctx.demo) {
+          const room = await budgetStatus(ctx);
+          out(`Budget left: ${usd(room.remainingMicros)} (${usd(room.day.remainingMicros)} today, ${usd(room.month.remainingMicros)} this month, ${usd(room.day.reservedMicros)} reserved).`);
+        }
         const s = await executeRun(ctx, { capUsd: cap, partial: Boolean(flags.partial) });
         const state = ctx.read();
         const ranked = listLeads(state, cfg);
@@ -139,7 +144,7 @@ export async function main(argv: string[], env: Record<string, string | undefine
           fs.writeFileSync(path.join(outDir, `new-${stamp}.md`), leadsMarkdown(fresh, `New warm leads since the last run (${stamp})`));
           fs.writeFileSync(path.join(outDir, `new-${stamp}.csv`), leadsCsv(fresh));
         }
-        out(`${s.demo ? "Demo run (simulated cost). " : ""}${s.leads} leads on the list, ${s.newLeads} new. Spent ${usd(s.spentMicros)} of a ${usd(s.capMicros)} cap (quoted up to ${usd(s.quotedMicros)}). ${s.pendingCalls} pending, ${s.failedCalls} failed, ${s.skippedByCap} skipped by the cap.`);
+        out(`${s.demo ? "Demo run (simulated cost). " : ""}${s.leads} leads on the list, ${s.newLeads} new. Spent ${usd(s.spentMicros)} of a ${usd(s.capMicros)} cap (quoted up to ${usd(s.quotedMicros)}). ${s.pendingCalls} pending, ${s.failedCalls} failed, ${s.skippedByCap} skipped by the cap, ${s.skippedByBudget ?? 0} skipped by the budget.`);
         for (const n of s.notes) out(`  Note: ${n}`);
         if (s.aborted) out(`  ${s.aborted}`);
         out(`Wrote ${path.join(outDir, `warm-${stamp}`)}.json, .csv and .md${flags["since-last"] ? `, and new-${stamp}.md and .csv` : ""}.`);
@@ -169,7 +174,7 @@ export async function main(argv: string[], env: Record<string, string | undefine
         if (flags["dry-run"]) { out("Dry run. No call was made."); return 0; }
         if (!ctx.demo && !ctx.looot && !hasLoootToken(effEnv)) { out("LOOOT_TOKEN is not set."); return 2; }
         const r = await executeEmails(ctx, ids, num(flags["max-spend"], 1, "--max-spend"));
-        out(`${r.found} emails found, ${r.deliverable} verified deliverable. Spent ${usd(r.spentMicros)}. ${r.pending} pending, ${r.skippedByCap} skipped by the cap.`);
+        out(`${r.found} emails found, ${r.deliverable} verified deliverable. Spent ${usd(r.spentMicros)}. ${r.pending} pending, ${r.skippedByCap} skipped by the cap, ${r.skippedByBudget} skipped by the budget.`);
         return r.aborted ? 1 : 0;
       }
       case "export": {
@@ -228,7 +233,7 @@ export async function main(argv: string[], env: Record<string, string | undefine
     }
   } catch (e) {
     out((e as Error).message);
-    return /above the cap|not set|No signal sources/.test((e as Error).message) ? 2 : 1;
+    return /above the cap|above what is left of the budget|not set|No signal sources/.test((e as Error).message) ? 2 : 1;
   }
 }
 

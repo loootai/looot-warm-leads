@@ -1,6 +1,7 @@
 import type { WarmConfig } from "./config";
 import { endpointFor, inputs, type EndpointDef } from "./endpoints";
 import type { PriceMap, Runner } from "./looot";
+import type { Ledger } from "./budget";
 import { Meter } from "./meter";
 import { findEmail, parseVerify } from "./parse";
 import { shortHash } from "./run";
@@ -38,6 +39,8 @@ export interface EmailRunOptions {
   prices: PriceMap;
   unpriced?: readonly string[];
   capMicros: number;
+  /** Period budget, reservations and stored answers. Left out in demo mode and in tests that do not need it. */
+  ledger?: Ledger;
   now?: Date;
   demo?: boolean;
 }
@@ -45,6 +48,8 @@ export interface EmailRunOptions {
 export interface EmailRunResult {
   spentMicros: number;
   skippedByCap: number;
+  skippedByBudget: number;
+  budgetMessage: string | null;
   pending: number;
   /** Updated results by lead id. */
   results: Record<string, EmailResult>;
@@ -58,14 +63,16 @@ export interface EmailRunResult {
 export async function runEmails(o: EmailRunOptions): Promise<EmailRunResult> {
   const d = defs(o.config);
   const now = o.now ?? new Date();
-  const meter = new Meter({ looot: o.looot, prices: o.prices, unpriced: o.unpriced, capMicros: o.capMicros, demo: o.demo });
+  const meter = new Meter({ looot: o.looot, prices: o.prices, unpriced: o.unpriced, capMicros: o.capMicros, ledger: o.ledger, now: o.demo ? undefined : o.now, demo: o.demo });
   const results: Record<string, EmailResult> = {};
   for (const lead of o.leads) {
     if (lead.email && !lead.email.pending) continue;
-    const key = (step: string, v: string) => `warm:v1:${step}:${shortHash(`${lead.id}:${v}`, 10)}`;
+    const key = (step: string, v: string) => `warm:v1:${step}:${shortHash(`${lead.id}:${v.trim().toLowerCase()}`, 16)}`;
     const findInput = inputs.emailFind(lead.linkedinUrl);
     const found = await meter.call(d.find, findInput, key(d.find.endpointId, lead.linkedinUrl));
     let cost = found.costMicros;
+    // A call that was refused (cap, budget, price) did not run. Leave the lead as it was so a later run tries again.
+    if (found.status === "skipped_cap" || found.status === "skipped_budget" || found.status === "skipped_price") continue;
     if (found.status === "pending") {
       results[lead.id] = { address: null, status: "pending", deliverable: false, findProvider: d.find.provider, verifyProvider: d.verify.provider, costMicros: cost, at: now.toISOString(), pending: true };
       continue;
@@ -77,6 +84,11 @@ export async function runEmails(o: EmailRunOptions): Promise<EmailRunResult> {
     }
     const ver = await meter.call(d.verify, inputs.emailVerify(address), key(d.verify.endpointId, address));
     cost += ver.costMicros;
+    if (ver.status === "skipped_cap" || ver.status === "skipped_budget" || ver.status === "skipped_price") {
+      // The address is found and paid for. Keep it as pending so the next run only has to verify it (the find replays free).
+      results[lead.id] = { address, status: "pending", deliverable: false, findProvider: d.find.provider, verifyProvider: d.verify.provider, costMicros: cost, at: now.toISOString(), pending: true };
+      continue;
+    }
     if (ver.status === "pending") {
       results[lead.id] = { address, status: "pending", deliverable: false, findProvider: d.find.provider, verifyProvider: d.verify.provider, costMicros: cost, at: now.toISOString(), pending: true };
       continue;
@@ -84,5 +96,5 @@ export async function runEmails(o: EmailRunOptions): Promise<EmailRunResult> {
     const v = ver.status === "ok" ? parseVerify(ver.result) : null;
     results[lead.id] = { address, status: v?.status ?? "unverified", deliverable: v?.deliverable ?? false, findProvider: d.find.provider, verifyProvider: d.verify.provider, costMicros: cost, at: now.toISOString() };
   }
-  return { spentMicros: meter.spent, skippedByCap: meter.skippedByCap, pending: meter.pending, results, aborted: meter.aborted };
+  return { spentMicros: meter.spent, skippedByCap: meter.skippedByCap, skippedByBudget: meter.skippedByBudget, budgetMessage: meter.budgetMessage, pending: meter.pending, results, aborted: meter.aborted };
 }

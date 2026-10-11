@@ -33,6 +33,8 @@ export interface LoootClientOptions {
 /** The part of the client the engine needs. Tests and the demo pass their own. */
 export interface Runner {
   runAndWait(endpointId: string, input: Record<string, unknown>, idempotencyKey: string): Promise<LoootRun>;
+  /** Reads a run again. Used to settle calls that were still running when the app last looked. Left out by the demo runner. */
+  getRun?(runId: string): Promise<LoootRun>;
 }
 
 /** Client for the looot calls this app makes: run an endpoint, read a run, read the balance. */

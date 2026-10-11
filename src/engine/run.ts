@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import type { WarmConfig } from "./config";
 import { ENDPOINTS, inputs, type EndpointDef, type StepId } from "./endpoints";
 import type { PriceMap, Runner } from "./looot";
-import { Meter } from "./meter";
+import type { Ledger } from "./budget";
+import { Meter, normalizeInput } from "./meter";
 import { clip, domainOf, normalizeCompanyUrl, normalizeProfileUrl, parseCompany, parseEngagement, parseFunding, parseJobs, parsePosts, parseProfile, type PostRow } from "./parse";
 import { firstMatch, scorePerson } from "./score";
 import type { Lead, Quote, QuoteLine, RunSummary, SignalEvent, SignalKind, State } from "./types";
@@ -17,11 +18,21 @@ export function leadId(linkedinUrl: string): string {
 }
 
 /**
- * One key per (endpoint, input, day). The same key replays the stored run and never charges twice, so running
- * again the same day, or after a crash, costs nothing for calls that already finished.
+ * How long a discovery answer is reused. Inside one period a repeated request is answered from the stored result with no
+ * call. The next period is a deliberate fresh request: it gets its own key and can be charged again. LinkedIn posts and
+ * their commenters change daily, so the period is one day.
+ */
+export const REFRESH_PERIOD_MS = 24 * 3_600_000;
+
+/**
+ * One key per (endpoint, normalised input, refresh period). The key has no date or clock time in it: the period is a whole
+ * number counted from the epoch (floor(time / REFRESH_PERIOD_MS)), so the key holds for the whole period. The same key
+ * replays the stored run and never charges twice, so running again in the period, or after a crash, costs nothing for
+ * calls that already finished. The input is trimmed, lowercased and key-sorted first, so spelling the same request
+ * differently does not pay twice.
  */
 export function idempotencyKey(def: EndpointDef, input: Record<string, unknown>, now: Date): string {
-  return `warm:v1:${def.endpointId}:${shortHash(JSON.stringify(input), 10)}:${now.toISOString().slice(0, 10)}`;
+  return `warm:v1:${def.endpointId}:${shortHash(JSON.stringify(normalizeInput(input)), 16)}:p${Math.floor(now.getTime() / REFRESH_PERIOD_MS)}`;
 }
 
 /** What a run costs at list price, as an upper bound from the limits in the config. Pure: no call is made. */
@@ -85,6 +96,8 @@ export interface RunOptions {
   priceSource?: Quote["priceSource"];
   unpriced?: readonly string[];
   capMicros: number;
+  /** Period budget, reservations and stored answers. Left out in demo mode and in tests that do not need it. */
+  ledger?: Ledger;
   /** The saved state. Leads already in it keep their first-seen date and their profile data. */
   state: State;
   now?: Date;
@@ -137,7 +150,7 @@ export async function runWarm(opts: RunOptions): Promise<{ summary: RunSummary; 
   const cfg = opts.config;
   const now = opts.now ?? new Date();
   const startedAt = opts.demo ? now.toISOString() : new Date().toISOString();
-  const meter = new Meter({ looot: opts.looot, prices: opts.prices, unpriced: opts.unpriced, capMicros: opts.capMicros, demo: opts.demo });
+  const meter = new Meter({ looot: opts.looot, prices: opts.prices, unpriced: opts.unpriced, capMicros: opts.capMicros, ledger: opts.ledger, now: opts.demo ? undefined : opts.now, demo: opts.demo });
   const quote = buildQuote(cfg, opts.prices, opts.priceSource);
   const notes: string[] = [];
   const cands = new Map<string, Candidate>();
@@ -407,6 +420,7 @@ export async function runWarm(opts: RunOptions): Promise<{ summary: RunSummary; 
 
   const visible = Object.values(leads).filter((l) => !l.excluded && l.score >= cfg.scoring.listMinScore);
   const newIds = visible.filter((l) => l.isNew).map((l) => l.id);
+  if (meter.skippedByBudget > 0) notes.push(`${meter.skippedByBudget} calls were skipped because the period budget would have been passed. ${meter.budgetMessage ?? ""}`.trim());
   if (meter.skippedByCap > 0) notes.push(`${meter.skippedByCap} calls were skipped because the cap would have been passed.`);
   if (cands.size === 0 && !meter.aborted) notes.push("The sources returned no people. Check the source URLs and keywords.");
   const summary: RunSummary = {
@@ -418,6 +432,8 @@ export async function runWarm(opts: RunOptions): Promise<{ summary: RunSummary; 
     quotedMicros: quote.totalMicros,
     spentMicros: meter.spent,
     skippedByCap: meter.skippedByCap,
+    skippedByBudget: meter.skippedByBudget,
+    budgetMessage: meter.budgetMessage,
     pendingCalls: meter.pending,
     failedCalls: meter.failed,
     aborted: meter.aborted,

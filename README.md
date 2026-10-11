@@ -148,12 +148,21 @@ State (leads, outbox, do-not-contact hashes) is the JSON file `.looot-warm/state
 
 ## Spending
 
+Four limits stand between a request and a charge, checked in this order: the quote, the cap per run, the period budget, then the call. The paid paths are the discovery run (`run`) and the email lookup (`emailRun`, `warm email`). Both go through the same meter.
+
 - Every paid action shows its quote first, in the Run panel, in the email quote and with `--dry-run`.
 - In the web UI the caps come from the config, `spend.runCapUsd` (default $2) and `spend.emailCapUsd` (default $1). The browser cannot raise them, and a cap in a request is ignored. At most 6 paid actions per session every 10 minutes. The CLI takes `--max-spend`, default $2 for a run and $1 for emails. Before each call the list price is reserved against the cap, so spend cannot pass it. A quote above the cap is refused (exit code 2) unless you pass `--partial`.
 - A typical run is $0.25 at most for 3 competitor pages, 2 creators and 3 keywords with only the new-role trigger, and $0.65 at most with hiring and funding triggers. See [what a typical run costs](#what-a-typical-run-costs). Emails cost $0.0054 per lead at most and are always quoted separately.
-- Every call carries a stable idempotency key built from the endpoint, the input and the day (emails: lead and step). Running again the same day replays finished calls at no charge.
-- A run still in progress when waiting stops is "pending", never "failed at $0". It is counted separately and collected by running again the same day.
+- The period budget caps all runs together: a daily and a monthly amount (UTC), $10 and $50 until you change them. The owner changes them on the Cost page of the web UI, or sets the starting values with `WARM_DAILY_USD` and `WARM_MONTHLY_USD`. A request to `/api/action` cannot carry a budget or a cap: any such field in it is ignored. A run whose quote is above what is left is refused (exit code 2 on the CLI) unless you pass `--partial`, which runs until the budget is reached. An email lookup above what is left is always refused.
+- Before each paid call the app reserves its list price in `budget.json` (in `WARM_DIR`), under a lock file, and refuses the call if used plus reserved plus the price would pass the daily or the monthly budget. Two requests started together cannot both pass. When the call ends the reservation becomes the real charge. A failed call releases it. A call still running at looot (`pending`) keeps its reservation: it is never recorded as failed at $0 and the budget is not handed back early.
+- The next run or email lookup reads every pending call back with `GET /v1/runs/{id}` and settles the ones that ended, to their real cost. If looot cannot be reached, or the app died before it got a run id, the reservation stays for 24 hours and is then released. A network error mid-call is treated the same way, because the call may have been accepted.
+- The sidebar and the Cost page show used, reserved and remaining for today and this month. At the budget the call is skipped and the run says which limit it hit.
+- Every call has a stable key: the endpoint, the normalised input (trimmed, lowercased, keys sorted) and the refresh period. The key has no date or clock time in it. The refresh period is the whole number `floor(time / 24 hours)`, so a repeated request inside the period gets the same key, is answered from the stored result in `budget.json` with no call and no reservation, and is never charged twice. A new period is a deliberate fresh request with its own key, because LinkedIn posts and their commenters change daily. Email lookups use a key made of the lead and the step with no period, so a lead is looked up once. If a stored result is missing, looot replays the same key without charging again.
+- A run still in progress when waiting stops is "pending", never "failed at $0". It is counted separately and settled by the next run.
 - A failed call is not charged. A 401 or 402 from looot stops all later calls in the run.
+- The looot token balance is the final limit. Fund a dedicated token with only what you are willing to spend, and keep the budget below it.
+
+The budget lives in a file, so run one instance on a disk that persists. Several instances, or a serverless host with a throwaway disk, do not share it.
 
 ## Securing a deployment
 
@@ -167,7 +176,7 @@ Pages and routes were listed from `src/app` and classified. A test reads the fol
 |---|---|---|
 | Public | 5 | `/login`, `/api/auth/login`, `/api/auth/logout`, `/api/health`, `/api/unipile/webhook` |
 | Admin pages | 6 | `/` (inbox), `/leads/[id]`, `/sources`, `/icp`, `/outbox`, `/cost` |
-| Admin API | 2 | `/api/action` (every paid run, queue, approve, send, erase, purge, config and the live-send switch), `/api/export` (the lead CSV) |
+| Admin API | 3 | `/api/action` (every paid run, queue, approve, send, erase, purge, config and the live-send switch), `/api/budget` (read, and change the period budget), `/api/export` (the lead CSV) |
 
 Any path not listed is treated as admin. The webhook is public because Unipile has to reach it. It answers 401 unless the `Unipile-Auth` header equals `UNIPILE_WEBHOOK_SECRET`, compared in constant time, and 401 to everything when the secret is not set.
 
@@ -180,6 +189,7 @@ Any path not listed is treated as admin. The webhook is public because Unipile h
 - Sending a LinkedIn message needs the session, the CSRF token, the id of the next item, and the hash of the text you reviewed. The server checks them against the outbox before it calls Unipile.
 - Live sending cannot be switched on without an admin password. The switch is an admin action and is recorded in the audit log with the session that did it.
 - Spend caps come from `spend.runCapUsd` and `spend.emailCapUsd` in the config. A run still shows its quote first and is refused when the quote is above the cap. There is a limit of 6 paid actions per session every 10 minutes.
+- The period budget (`PUT /api/budget`) is changed only by the signed-in owner, with the CSRF token. A run cannot raise it. See [Spending](#spending). The looot token balance is the final limit, so give the app a token funded with only what you are willing to spend.
 - Admin responses carry `Cache-Control: no-store`. All responses carry a Content-Security-Policy (`frame-ancestors 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. The CSP allows inline scripts because Next.js needs them.
 - The demo (`npm run demo`) has no sign-in and shows a "Demo, no sign-in" badge. It refuses to start next to a `LOOOT_TOKEN` or a state file unless an admin password is set.
 
@@ -197,6 +207,7 @@ A shared password is the floor. For anything people other than you can reach, pu
 ### What changes when you upgrade
 
 - The web UI asks for the password. Set `WARM_ADMIN_PASSWORD` before you start 0.1.5, or the admin pages stay closed.
+- 0.1.6 adds a daily and monthly budget in `budget.json` next to `state.json`, $10 and $50 by default. A run or email lookup above what is left is refused. Raise it on the Cost page, or set `WARM_DAILY_USD` and `WARM_MONTHLY_USD`. Run one instance on a persistent disk.
 - The config file has a new `spend` block. The run and email caps in the web UI come from it, and the cap box on the Inbox page is gone.
 - `outbox.dryRun: false` in the config now has no effect without an admin password. That applies to the CLI too: `warm outbox tick --live` needs `WARM_ADMIN_PASSWORD` in the environment.
 - Changing `outbox.dryRun` through the config save no longer works. Use the live-send switch on the Outbox page.

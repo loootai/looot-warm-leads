@@ -1,6 +1,6 @@
 {
   "name": "looot-warm-leads",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Open-source warm leads from LinkedIn intent signals. Find people engaging with competitors and topics, score them against your ICP with an explainable breakdown, find emails, draft messages. Next.js and looot.",
   "license": "MIT",
   "private": true,
