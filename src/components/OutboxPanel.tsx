@@ -32,6 +32,9 @@ export interface OutboxView {
   gap: string;
   nextReason: string;
   nextText?: string;
+  /** The item a live send would send, and the hash of the text on screen. */
+  nextItemId?: string;
+  nextHash?: string;
   dncCount: number;
 }
 
@@ -67,8 +70,9 @@ export function OutboxPanel({ rows, view }: { rows: OutboxRow[]; view: OutboxVie
         {view.nextText && <pre className="mt-1 whitespace-pre-wrap rounded-control bg-page p-2 text-12">{view.nextText}</pre>}
         <div className="mt-3 flex flex-wrap gap-2">
           <Btn disabled={b.busy} onClick={() => b.run(async () => { const r = await act<{ action: string; reason: string }>("tick", { live: false }); setMsg(`Dry run: ${r.reason}`); })}><ShieldCheck size={14} />Preview next send</Btn>
-          <Btn tone="primary" disabled={b.busy || view.demo || view.dryRun || !view.configured || !view.accountConnected || view.paused} title={view.dryRun ? "Set outbox.dryRun to false in the config to enable live sends" : undefined} onClick={() => { if (confirm("Send the next approved item through Unipile now?")) void b.run(async () => { const r = await act<{ action: string; reason: string }>("tick", { live: true }); setMsg(`${r.action}: ${r.reason}`); refresh(); }); }}>Send next now</Btn>
+          <Btn tone="primary" disabled={b.busy || view.demo || view.dryRun || !view.configured || !view.accountConnected || view.paused || !view.nextItemId} title={view.dryRun ? "Turn on live sending first" : undefined} onClick={() => { if (confirm("Send the next approved item through Unipile now?")) void b.run(async () => { const r = await act<{ action: string; reason: string }>("tick", { live: true, itemId: view.nextItemId, hash: view.nextHash }); setMsg(`${r.action}: ${r.reason}`); refresh(); }); }}>Send next now</Btn>
           <Btn disabled={b.busy || !(view.demo || view.accountConnected)} onClick={() => b.run(async () => { const r = await act<{ replies: number; accepted: number; checks: number }>("sync"); setMsg(`${r.replies} new replies, ${r.accepted} accepted invitations, ${r.checks} profile checks.`); refresh(); })}><RefreshCw size={14} />Check replies</Btn>
+          {!view.demo && <Btn tone={view.dryRun ? undefined : "danger"} disabled={b.busy} title={view.dryRun ? "Needs an admin password. Recorded in the audit log." : "Recorded in the audit log."} onClick={() => { if (confirm(view.dryRun ? "Turn on live sending? Approved items will then go to LinkedIn through Unipile when you press Send next now." : "Turn live sending off?")) void b.run(async () => { await act("setLiveSend", { live: view.dryRun }); refresh(); }); }}>{view.dryRun ? "Turn on live sending" : "Turn live sending off"}</Btn>}
           <Btn disabled={b.busy} onClick={() => b.run(async () => { const r = await act<{ url: string | null; message?: string }>("connect"); setLink(r.url ?? r.message ?? null); })}><Link2 size={14} />Connect LinkedIn on Unipile</Btn>
         </div>
         {link && <p className="mt-2 break-all text-12">{link.startsWith("http") ? <>Sign in on Unipile&apos;s page: <a className="text-link underline" href={link}>{link}</a></> : link}</p>}

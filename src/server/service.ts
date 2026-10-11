@@ -9,11 +9,12 @@ import { llmRewrite } from "../engine/llm";
 import { fetchPrices, hasLoootToken, loootFromEnv, type PriceMap, type Runner } from "../engine/looot";
 import { toMicros } from "../engine/money";
 import { buildQuote, runWarm } from "../engine/run";
-import { dataDir, emptyState, forget, purge, readState, writeState, addDnc } from "../engine/state";
+import { addAudit, dataDir, emptyState, forget, purge, readState, writeState, addDnc } from "../engine/state";
 import type { Lead, Quote, RunSummary, State } from "../engine/types";
 import { demoSender } from "../sender/demoSender";
 import { approveItems, applyWebhook, cancelItems, confirmSent, editItem, planNext, queueLead, retryUnknown, setPaused, syncOutbox, textHash, tick, type TickResult, type UnipileWebhookBody } from "../sender/outbox";
 import { unipileConfigured, unipileFromEnv, type SenderClient } from "../sender/unipile";
+import { isAuthConfigured } from "../lib/auth/policy";
 import { buildDemoState } from "./demoState";
 
 type Env = Record<string, string | undefined>;
@@ -42,6 +43,13 @@ export function configPath(env: Env): string {
 }
 
 /** Builds the context for this process. Demo mode (WARM_DEMO=1) keeps everything in memory and never touches the network. */
+export const LIVE_NEEDS_PASSWORD = "Live sending needs an admin password. Set WARM_ADMIN_PASSWORD (12 characters or more) or WARM_ADMIN_PASSWORD_HASH and restart. Until then outbox.dryRun stays true, whatever the config file says.";
+
+/** Forces outbox.dryRun to true when no admin password is set. */
+export function withLiveGuard(cfg: WarmConfig, env: Env): WarmConfig {
+  return !cfg.outbox.dryRun && !isAuthConfigured(env) ? { ...cfg, outbox: { ...cfg.outbox, dryRun: true } } : cfg;
+}
+
 export async function makeCtx(env: Env = process.env): Promise<Ctx> {
   if (env.WARM_DEMO === "1") {
     const demo = (globalThis.__warmDemo ??= await (async () => {
@@ -56,8 +64,12 @@ export async function makeCtx(env: Env = process.env): Promise<Ctx> {
     demo: false,
     env,
     now: () => new Date(),
-    getConfig: () => loadConfig(fs.existsSync(/*turbopackIgnore: true*/ file) ? file : undefined),
-    setConfig: (c) => saveConfig(c, file),
+    // Live sending needs an admin password. Without one the config file cannot turn it on: dryRun reads as true.
+    getConfig: () => withLiveGuard(loadConfig(fs.existsSync(/*turbopackIgnore: true*/ file) ? file : undefined), env),
+    setConfig: (c) => {
+      if (!c.outbox.dryRun && !isAuthConfigured(env)) throw new Error(LIVE_NEEDS_PASSWORD);
+      saveConfig(c, file);
+    },
     read: () => readState(stateFile),
     write: (s) => writeState(s, stateFile),
   };
@@ -239,9 +251,45 @@ export function plan(ctx: Ctx) {
 }
 
 /** One send tick. Dry-run unless `live` is true and the config has outbox.dryRun set to false and a Unipile account is connected. */
-export async function sendTick(ctx: Ctx, o: { live: boolean }): Promise<TickResult> {
+export async function sendTick(ctx: Ctx, o: { live: boolean; actor?: string }): Promise<TickResult> {
   const state = ctx.read();
-  return tick({ state, cfg: ctx.getConfig(), now: ctx.now(), client: senderClient(ctx), accountId: accountId(ctx, state), live: o.live, persist: () => ctx.write(state) });
+  const actor = o.actor ?? "cli";
+  if (o.live && !ctx.demo && !isAuthConfigured(ctx.env)) {
+    addAudit(state, { at: ctx.now().toISOString(), actor, action: "live_send_refused", detail: "No admin password is set." });
+    ctx.write(state);
+    return { action: "skipped", reason: LIVE_NEEDS_PASSWORD };
+  }
+  const before = planNext(state, ctx.getConfig(), ctx.now()).item;
+  const r = await tick({ state, cfg: ctx.getConfig(), now: ctx.now(), client: senderClient(ctx), accountId: accountId(ctx, state), live: o.live, persist: () => ctx.write(state) });
+  if (o.live && !ctx.demo && before && r.action !== "idle" && r.action !== "would_send") {
+    addAudit(state, { at: ctx.now().toISOString(), actor, action: "live_tick", detail: `${r.action} ${before.step} ${before.id}` });
+    ctx.write(state);
+  }
+  return r;
+}
+
+/**
+ * Sends the one approved item the admin reviewed. Refuses unless the next planned item has this id, its text still
+ * hashes to the hash the admin saw, and that hash is the one recorded at approval. Same checks the outbox runs, made explicit.
+ */
+export async function sendReviewed(ctx: Ctx, o: { itemId: string; hash: string; actor: string }): Promise<TickResult> {
+  const state = ctx.read();
+  const next = planNext(state, ctx.getConfig(), ctx.now()).item;
+  if (!next || next.id !== o.itemId) return { action: "skipped", reason: "The next item to send is not the one you reviewed. Reload the outbox." };
+  if (textHash(next.text) !== o.hash || next.approvedHash !== o.hash) return { action: "skipped", reason: "The text changed after review. Review and approve it again." };
+  return sendTick(ctx, { live: true, actor: o.actor });
+}
+
+/** Turns live sending on or off. Admin only (the route gates it), recorded in the audit log, and refused with no admin password. */
+export function setLiveSend(ctx: Ctx, live: boolean, actor: string): { dryRun: boolean } {
+  if (ctx.demo) throw new Error("The demo never sends.");
+  if (live && !isAuthConfigured(ctx.env)) throw new Error(LIVE_NEEDS_PASSWORD);
+  const cfg = ctx.getConfig();
+  ctx.setConfig({ ...cfg, outbox: { ...cfg.outbox, dryRun: !live } });
+  const state = ctx.read();
+  addAudit(state, { at: ctx.now().toISOString(), actor, action: live ? "live_send_on" : "live_send_off", detail: live ? "outbox.dryRun set to false." : "outbox.dryRun set to true." });
+  ctx.write(state);
+  return { dryRun: !live };
 }
 
 export async function sync(ctx: Ctx) {

@@ -260,4 +260,14 @@ export interface State {
   /** Email lookups and other paid steps outside a discovery run. */
   spendLog: { at: string; what: string; micros: number }[];
   sender: SenderState;
+  /** Admin actions that change what the app may do: the live-send switch and every live send. Newest last. */
+  audit?: AuditEntry[];
+}
+
+export interface AuditEntry {
+  at: string;
+  /** Who: "admin" with a short session id, or "cli" for a command run on the machine. */
+  actor: string;
+  action: "live_send_on" | "live_send_off" | "live_send_refused" | "live_tick";
+  detail: string;
 }

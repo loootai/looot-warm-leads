@@ -189,5 +189,9 @@
   },
   "privacy": {
     "retentionDays": 90
+  },
+  "spend": {
+    "runCapUsd": 2,
+    "emailCapUsd": 1
   }
 }

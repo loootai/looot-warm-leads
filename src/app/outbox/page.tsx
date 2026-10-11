@@ -2,6 +2,7 @@ import { OutboxPanel, type OutboxRow, type OutboxView } from "@/components/Outbo
 import { checksToday, inWorkingHours, sentToday, textHash } from "@/sender/outbox";
 import { accountId, makeCtx, plan } from "@/server/service";
 import { unipileConfigured } from "@/sender/unipile";
+import { requireAdminPage } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Outbox" };
@@ -9,6 +10,7 @@ export const metadata = { title: "Outbox" };
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default async function OutboxPage() {
+  await requireAdminPage();
   const ctx = await makeCtx();
   const cfg = ctx.getConfig();
   const state = ctx.read();
@@ -27,6 +29,8 @@ export default async function OutboxPage() {
     inWindow: inWorkingHours(now, cfg),
     gap: `${cfg.outbox.minGapSeconds} to ${cfg.outbox.maxGapSeconds} s`,
     nextReason: p.reason,
+    nextItemId: p.item?.id,
+    nextHash: p.item ? textHash(p.item.text) : undefined,
     nextText: p.item ? `${p.item.step === "invite" ? "Connection request" : "Follow-up"} to ${state.leads[p.item.leadId]?.name}: ${p.item.text}` : undefined,
     dncCount: state.sender.dnc.length,
   };
@@ -40,6 +44,26 @@ export default async function OutboxPage() {
         </p>
       </div>
       <OutboxPanel rows={rows} view={view} />
+      <section className="rounded-panel border border-line bg-panel p-4">
+        <h2 className="mb-2 text-16 font-medium">Audit log</h2>
+        <p className="mb-2 text-12 text-mute">Every change to the live-send switch and every live send, newest first. Stored in the state file.</p>
+        {(state.audit ?? []).length === 0 ? (
+          <p className="text-12 text-mute">Nothing recorded yet.</p>
+        ) : (
+          <table className="w-full text-left text-12">
+            <tbody>
+              {[...(state.audit ?? [])].reverse().slice(0, 20).map((a) => (
+                <tr key={`${a.at}${a.action}${a.detail}`} className="border-t border-line">
+                  <td className="py-1 pr-3 text-mute">{a.at.slice(0, 19).replace("T", " ")}</td>
+                  <td className="py-1 pr-3">{a.actor}</td>
+                  <td className="py-1 pr-3">{a.action}</td>
+                  <td className="py-1">{a.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
     </div>
   );
 }

@@ -9,7 +9,7 @@
 - Daily workflow: add the LOOOT_TOKEN repository secret, commit sources to config/warm.config.json, then `gh workflow run daily.yml`.
 - Free cost preview: `npm run warm -- run --dry-run` (no call, no charge).
 - Real run: `npm run warm -- run --max-spend 1 --since-last`. Refuses (exit 2) when the quote is above the cap or there is no token. Writes out/warm-<date>.json, .csv, .md and out/new-<date>.md, .csv.
-- Sample data, no token: `npm run warm -- run --demo` or `npm run demo` for the web UI on port 3281.
+- Sample data, no token: `npm run warm -- run --demo` or `npm run demo` for the web UI on port 3281 (no sign-in, refuses to start next to a real token). The web UI outside the demo needs WARM_ADMIN_PASSWORD (12+ characters).
 - Emails: `npm run warm -- email --top 5 --dry-run`, then without --dry-run.
 - Exports: `npm run warm -- export --format csv|instantly|md`.
 - Exit codes: 0 done, 1 error, 2 refused.

@@ -3,11 +3,13 @@ import { Panel } from "@/components/ui";
 import { ENDPOINTS, PRICES_AS_OF } from "@/engine/endpoints";
 import { usd, usdPrecise } from "@/engine/money";
 import { makeCtx } from "@/server/service";
+import { requireAdminPage } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Cost" };
 
 export default async function CostPage() {
+  await requireAdminPage();
   const ctx = await makeCtx();
   const state = ctx.read();
   const run = state.lastRun;

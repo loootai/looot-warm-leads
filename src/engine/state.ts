@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { shortHash } from "./run";
 import { normalizeProfileUrl } from "./parse";
-import type { SenderState, State } from "./types";
+import type { AuditEntry, SenderState, State } from "./types";
 
 /** Where data is kept: WARM_DIR, or .looot-warm in the working directory. */
 export function dataDir(env: Record<string, string | undefined> = process.env): string {
@@ -15,6 +15,11 @@ export function stateFile(env: Record<string, string | undefined> = process.env)
 
 export function emptySender(): SenderState {
   return { paused: false, items: [], dnc: [], sentLog: [], checkLog: [], suppressed: [] };
+}
+
+/** Appends one audit entry. Keeps the last 500. */
+export function addAudit(state: State, entry: AuditEntry): void {
+  state.audit = [...(state.audit ?? []), entry].slice(-500);
 }
 
 export function emptyState(): State {

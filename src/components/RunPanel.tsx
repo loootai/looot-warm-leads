@@ -5,13 +5,12 @@ import { useRouter } from "next/navigation";
 import { Play } from "lucide-react";
 import { usd, usdPrecise } from "@/engine/money";
 import type { Quote, RunSummary } from "@/engine/types";
-import { Btn, ErrorNote, Panel, act, inputCls, useBusy } from "./ui";
+import { Btn, ErrorNote, Panel, act, useBusy } from "./ui";
 
 /** Shows what a discovery run costs before it starts, takes a spend cap, and runs. */
-export function RunPanel({ demo, hasSources }: { demo: boolean; hasSources: boolean }) {
+export function RunPanel({ demo, hasSources, capUsd }: { demo: boolean; hasSources: boolean; capUsd: number }) {
   const router = useRouter();
   const [quote, setQuote] = useState<(Quote & { unpriced: string[] }) | null>(null);
-  const [cap, setCap] = useState("2");
   const [done, setDone] = useState<RunSummary | null>(null);
   const q = useBusy();
   const r = useBusy();
@@ -19,8 +18,7 @@ export function RunPanel({ demo, hasSources }: { demo: boolean; hasSources: bool
     void q.run(async () => setQuote(await act("quote")));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const capNum = Number(cap);
-  const over = quote ? quote.totalMicros > capNum * 1e6 : false;
+  const over = quote ? quote.totalMicros > capUsd * 1e6 : false;
   return (
     <Panel title="Find new warm leads" aside={<span className="text-12 text-mute">{demo ? "Demo: cost is simulated at list price" : "Quote first, then run"}</span>}>
       {!hasSources && <p className="mb-3 rounded-control bg-amber-soft px-2 py-1.5 text-12 text-amber">No signal sources yet. Add competitors, creators or keywords on the Sources page.</p>}
@@ -36,10 +34,8 @@ export function RunPanel({ demo, hasSources }: { demo: boolean; hasSources: bool
         </table>
       </div>
       <div className="mt-3 flex flex-wrap items-end gap-3">
-        <label className="text-12 font-medium text-mute">Spend cap (USD)
-          <input aria-label="Spend cap in dollars" inputMode="decimal" value={cap} onChange={(e) => setCap(e.target.value)} className={`${inputCls} w-24 num`} />
-        </label>
-        <Btn tone="primary" disabled={r.busy || !hasSources || !(capNum > 0)} onClick={() => r.run(async () => { const s = await act<RunSummary>("run", { capUsd: capNum }); setDone(s); router.refresh(); })}>
+        <p className="text-12 text-mute">Spend cap {usd(capUsd * 1e6)} per run. It is set in the config under spend.runCapUsd, not in the browser.</p>
+        <Btn tone="primary" disabled={r.busy || !hasSources} onClick={() => r.run(async () => { const s = await act<RunSummary>("run"); setDone(s); router.refresh(); })}>
           <Play size={14} />{r.busy ? "Running..." : "Run discovery"}
         </Btn>
         {over && <span className="text-12 text-amber">The quote is above the cap. The run will refuse; raise the cap or lower limits.</span>}

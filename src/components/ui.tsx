@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/cn";
+import { adminFetch } from "./adminFetch";
 
 /** Posts one action to the app's API and returns its data. Throws the server's message on failure. */
 export async function act<T = unknown>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
-  const res = await fetch("/api/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
+  const res = await adminFetch("/api/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
   const j = (await res.json()) as { ok: boolean; data?: T; error?: string };
   if (!j.ok) throw new Error(j.error ?? "Request failed");
   return j.data as T;

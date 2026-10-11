@@ -70,6 +70,8 @@ export type AppShellProps = {
   docsHref?: string;
   /** Text of the demo badge. Leave out when the app runs on real data. */
   demoLabel?: string;
+  /** Show a Sign out button. True when admin sign-in is on. */
+  signOut?: boolean;
   spend?: ShellSpend;
   primaryAction?: { href: string; label: string };
   children: React.ReactNode;
@@ -147,7 +149,7 @@ const isActive = (path: string, item: { href: string; also?: string[] }) => {
   return hit(item.href) || (item.also ?? []).some(hit);
 };
 
-export function AppShell({ appName, nav, githubHref, docsHref = "https://docs.looot.ai", demoLabel, spend, primaryAction, children }: AppShellProps) {
+export function AppShell({ appName, nav, githubHref, docsHref = "https://docs.looot.ai", demoLabel, signOut, spend, primaryAction, children }: AppShellProps) {
   const path = usePathname() ?? "/";
   const collapsed = useSyncExternalStore(subscribe, readCollapsed, () => false);
   const dark = useSyncExternalStore(subscribeTheme, readDark, () => false);
@@ -329,6 +331,14 @@ export function AppShell({ appName, nav, githubHref, docsHref = "https://docs.lo
             <Icon name="github" />
             <span className="ls-label">GitHub</span>
           </a>
+          {signOut && (
+            <form method="post" action="/api/auth/logout">
+              <button type="submit" className="ls-item ls-foot-item" title="Sign out">
+                <Icon name="settings" />
+                <span className="ls-label">Sign out</span>
+              </button>
+            </form>
+          )}
           <button type="button" className="ls-item ls-foot-item ls-collapse" onClick={() => writeCollapsed(!collapsed)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} aria-controls="ls-sidebar" title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
             <Icon name={collapsed ? "expand" : "collapse"} />
             <span className="ls-label">Collapse</span>

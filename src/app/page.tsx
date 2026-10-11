@@ -4,10 +4,12 @@ import { ago } from "@/components/chips";
 import { topEvent } from "@/engine/draft";
 import { usd } from "@/engine/money";
 import { listLeads, makeCtx } from "@/server/service";
+import { requireAdminPage } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function InboxPage() {
+  await requireAdminPage();
   const ctx = await makeCtx();
   const cfg = ctx.getConfig();
   const state = ctx.read();
@@ -36,7 +38,7 @@ export default async function InboxPage() {
         {tiles.map(([k, v]) => <div key={k} className="rounded-panel border border-line bg-panel p-3"><dt className="text-12 text-mute">{k}</dt><dd className="num text-20 font-medium">{v}</dd></div>)}
       </dl>
       <InboxTable rows={rows} />
-      <RunPanel demo={ctx.demo} hasSources={hasSources} />
+      <RunPanel demo={ctx.demo} hasSources={hasSources} capUsd={ctx.getConfig().spend.runCapUsd} />
     </div>
   );
 }

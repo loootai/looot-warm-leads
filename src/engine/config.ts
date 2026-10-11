@@ -81,6 +81,8 @@ const Schema = z.object({
     followUpDelayHours: z.number().min(0),
   }),
   privacy: z.object({ retentionDays: z.number().int().min(1) }),
+  /** Spend ceilings the web app uses. The browser cannot raise them. */
+  spend: z.object({ runCapUsd: z.number().positive().max(1000), emailCapUsd: z.number().positive().max(1000) }),
 });
 
 export type WarmConfig = z.infer<typeof Schema>;
@@ -159,6 +161,7 @@ export function defaultConfig(): WarmConfig {
       followUpDelayHours: 24,
     },
     privacy: { retentionDays: 90 },
+    spend: { runCapUsd: 2, emailCapUsd: 1 },
   };
 }
 

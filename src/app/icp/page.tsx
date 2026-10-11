@@ -1,10 +1,12 @@
 import { IcpEditor } from "@/components/ConfigEditors";
 import { makeCtx } from "@/server/service";
+import { requireAdminPage } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "ICP" };
 
 export default async function IcpPage() {
+  await requireAdminPage();
   const ctx = await makeCtx();
   return (
     <div className="space-y-4">

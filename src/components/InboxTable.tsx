@@ -50,7 +50,7 @@ export function InboxTable({ rows }: { rows: InboxRow[] }) {
           <ul className="mt-1 text-mute">{quote.lines.map((l) => <li key={l.endpointId}>{l.label}: {l.calls} x {usdPrecise(l.priceMicros)} via {l.provider} ({l.jobId})</li>)}</ul>
           <p className="mt-1 text-mute">The verify call runs only when the finder returns an address, so this is the most it can cost.</p>
           <div className="mt-2 flex gap-2">
-            <Btn tone="primary" disabled={b.busy} onClick={() => b.run(async () => { const r = await act<{ found: number; deliverable: number; spentMicros: number }>("emailRun", { ids, capUsd: Math.max(0.05, quote.totalMicros / 1e6) }); setQuote(null); setMsg(`${r.found} emails found, ${r.deliverable} verified. Spent ${usd(r.spentMicros)}.`); router.refresh(); })}>Run for {usd(quote.totalMicros)}</Btn>
+            <Btn tone="primary" disabled={b.busy} onClick={() => b.run(async () => { const r = await act<{ found: number; deliverable: number; spentMicros: number }>("emailRun", { ids }); setQuote(null); setMsg(`${r.found} emails found, ${r.deliverable} verified. Spent ${usd(r.spentMicros)}.`); router.refresh(); })}>Run for {usd(quote.totalMicros)}</Btn>
             <Btn onClick={() => setQuote(null)}>Cancel</Btn>
           </div>
         </div>

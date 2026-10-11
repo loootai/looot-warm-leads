@@ -7,10 +7,12 @@ import { LeadActions } from "@/components/LeadActions";
 import { Panel } from "@/components/ui";
 import { usd, usdPrecise } from "@/engine/money";
 import { makeCtx, senderEnabled } from "@/server/service";
+import { requireAdminPage } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function LeadPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdminPage();
   const { id } = await params;
   const ctx = await makeCtx();
   const cfg = ctx.getConfig();

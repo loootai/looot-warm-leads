@@ -1,5 +1,7 @@
 # looot-warm-leads
 
+> **Security notice.** Versions 0.1.4 and older had no admin sign-in. Anyone who could reach a deployed instance could start paid looot runs, send LinkedIn messages through Unipile when dry-run was off, erase or export leads, and read the lead CSV. If you run 0.1.4 or older on a reachable host, upgrade to 0.1.5 and set `WARM_ADMIN_PASSWORD`. See [Securing a deployment](#securing-a-deployment).
+
 Warm B2B leads from LinkedIn intent signals, on one [looot](https://looot.ai) key. An open-source alternative to [Gojiberry](https://gojiberry.ai), which lists its Pro plan at $99 a month (read on 2026-10-10).
 
 You name competitors, creators and topics. It finds the people who commented on or reacted to their posts, who posted about the topic, who started a new role, or who work at a company that is hiring or just raised money. It reads their profiles, scores each person against your ICP, and ranks a daily list. Every score shows which signal added how many points, which provider supplied it, what it cost, and a link to check it. You pick leads, see the cost of the email lookup first, and get a verified work email. It drafts a first message that refers to the real signal. Export to CSV or to an Instantly import file. Sending on LinkedIn is optional and goes through your own Unipile account, see below.
@@ -8,7 +10,7 @@ You name competitors, creators and topics. It finds the people who commented on 
 
 ## What it is, and what it is not
 
-It is a local tool: a Next.js app, a CLI and a daily GitHub Actions workflow on one engine. State is a JSON file in `.looot-warm/`. There is no hosted service, no database, and no login. Run it on your machine or behind your own auth. It is not a hosted outreach platform: it does not run campaigns for you, and it does not send email.
+It is a local tool: a Next.js app, a CLI and a daily GitHub Actions workflow on one engine. State is a JSON file in `.looot-warm/`. There is no hosted service and no database. The web UI has one admin password, set in the environment (see [Securing a deployment](#securing-a-deployment)). It is not a hosted outreach platform: it does not run campaigns for you, and it does not send email.
 
 It does not log in to LinkedIn, does not use a LinkedIn session cookie, and does not automate a browser. The intent data comes from public-data providers through looot. The optional LinkedIn sending goes only through Unipile's hosted auth.
 
@@ -58,7 +60,7 @@ Sources: gojiberry.ai home page and blog index, plus review summaries from Sales
   3. With no browser (CI, a server), create the token in Settings, "Agent tokens", then `export LOOOT_TOKEN=...`.
   4. The token needs the scopes `runs.execute`, `catalog.read`, `runs.read` and `usage.read`.
   5. A run needs a funded balance. The minimum top-up is $5, and signing up adds no credit. See https://docs.looot.ai/money.
-- Optional accounts, only if you use the feature. A [Unipile](https://www.unipile.com) account for LinkedIn sending (paid, see below). An Anthropic API key for the LLM rewrite of drafts. Nothing else. There is no Supabase, no sign-in and no database.
+- Optional accounts, only if you use the feature. A [Unipile](https://www.unipile.com) account for LinkedIn sending (paid, see below). An Anthropic API key for the LLM rewrite of drafts. Nothing else. There is no Supabase and no database. Admin sign-in is one password you set in the environment.
 
 ## Try it in one minute
 
@@ -69,7 +71,7 @@ npm ci --ignore-scripts
 npm run demo            # web UI on http://localhost:3281
 ```
 
-Open http://localhost:3281. It shows invented people and companies, makes no network call and needs no token or account. Stop it with Ctrl+C. The same engine from the CLI, writing reports to `./out`:
+Open http://localhost:3281. The demo has no sign-in and shows a "Demo, no sign-in" badge. It refuses to start if `LOOOT_TOKEN` is set or a state file exists, unless you also set an admin password. It shows invented people and companies, makes no network call and needs no token or account. Stop it with Ctrl+C. The same engine from the CLI, writing reports to `./out`:
 
 ```bash
 npm run warm -- run --demo
@@ -90,6 +92,10 @@ Every environment variable the code reads:
 | Name | Required | What it does | Where to get it |
 | --- | --- | --- | --- |
 | `LOOOT_TOKEN` | For a real run or an email lookup. Not for `--demo` or `--dry-run`. | Agent token sent to the looot API. | See "What you need". |
+| `WARM_ADMIN_PASSWORD` | Required outside the demo | Admin password, 12 characters or more. Without it the admin pages and admin API are closed, live sending cannot be turned on, and `/login` shows a setup page. | Choose one. |
+| `WARM_ADMIN_PASSWORD_HASH` | Alternative | `scrypt$salt$key` instead of the plain password. Wins if both are set. | `npm run hash-password -- 'your password'` |
+| `WARM_SESSION_SECRET` | No | Key that signs session cookies. Default: derived from the password, so a new password signs everyone out. | Leave unset, or a long random string. |
+| `WARM_COOKIE_SECURE` | No | Set `0` to drop the Secure flag in production, only for plain-http testing. | Leave unset. |
 | `LOOOT_API_URL` | No | Overrides the looot API base URL. Default `https://api.looot.ai`. | Leave unset. |
 | `WARM_DIR` | No | Folder for saved state. Default `.looot-warm`. | Your choice. |
 | `WARM_CONFIG` | No | Config file to use. Same as `--config`. Default `$WARM_DIR/config.json`, then `config/warm.config.json`. | Your choice. |
@@ -97,7 +103,7 @@ Every environment variable the code reads:
 | `UNIPILE_DSN` | For LinkedIn sending | Your Unipile API host, for example `api1.unipile.com:13111`. | Unipile dashboard. |
 | `UNIPILE_API_KEY` | For LinkedIn sending | Sent as the `X-API-KEY` header. | Unipile dashboard. |
 | `UNIPILE_ACCOUNT_ID` | No | The connected LinkedIn account. If unset, the account id from the Unipile callback is used. | Unipile dashboard. |
-| `UNIPILE_WEBHOOK_SECRET` | For the webhook | The webhook accepts a request only if its `Unipile-Auth` header equals this value. | Make up a long random string. |
+| `UNIPILE_WEBHOOK_SECRET` | For the webhook | The webhook accepts a request only if its `Unipile-Auth` header equals this value, compared in constant time. Without it the webhook answers 401 to everything. | Make up a long random string. |
 | `WARM_LLM` | No | `anthropic` switches on the LLM rewrite of drafts. All three LLM variables must be set. | You set it. |
 | `ANTHROPIC_API_KEY` | With `WARM_LLM` | Key for the Anthropic API. | Anthropic console. |
 | `WARM_LLM_MODEL` | With `WARM_LLM` | Model name sent to the Anthropic API. | Anthropic docs. |
@@ -143,15 +149,65 @@ State (leads, outbox, do-not-contact hashes) is the JSON file `.looot-warm/state
 ## Spending
 
 - Every paid action shows its quote first, in the Run panel, in the email quote and with `--dry-run`.
-- The run cap is `--max-spend`. The default is $2 for a run and $1 for emails. Before each call the list price is reserved against the cap, so spend cannot pass it. A quote above the cap is refused (exit code 2) unless you pass `--partial`.
+- In the web UI the caps come from the config, `spend.runCapUsd` (default $2) and `spend.emailCapUsd` (default $1). The browser cannot raise them, and a cap in a request is ignored. At most 6 paid actions per session every 10 minutes. The CLI takes `--max-spend`, default $2 for a run and $1 for emails. Before each call the list price is reserved against the cap, so spend cannot pass it. A quote above the cap is refused (exit code 2) unless you pass `--partial`.
 - A typical run is $0.25 at most for 3 competitor pages, 2 creators and 3 keywords with only the new-role trigger, and $0.65 at most with hiring and funding triggers. See [what a typical run costs](#what-a-typical-run-costs). Emails cost $0.0054 per lead at most and are always quoted separately.
 - Every call carries a stable idempotency key built from the endpoint, the input and the day (emails: lead and step). Running again the same day replays finished calls at no charge.
 - A run still in progress when waiting stops is "pending", never "failed at $0". It is counted separately and collected by running again the same day.
 - A failed call is not charged. A 401 or 402 from looot stops all later calls in the run.
 
+## Securing a deployment
+
+Versions 0.1.4 and older had no admin authentication. From 0.1.5 every route is either public on purpose or admin, and the admin routes are closed unless you set a password.
+
+### What is public and what is admin
+
+Pages and routes were listed from `src/app` and classified. A test reads the folder and fails if a route is missing from `src/lib/auth/routes.ts` or if an admin route does not call the gate.
+
+| Kind | Count | Routes |
+|---|---|---|
+| Public | 5 | `/login`, `/api/auth/login`, `/api/auth/logout`, `/api/health`, `/api/unipile/webhook` |
+| Admin pages | 6 | `/` (inbox), `/leads/[id]`, `/sources`, `/icp`, `/outbox`, `/cost` |
+| Admin API | 2 | `/api/action` (every paid run, queue, approve, send, erase, purge, config and the live-send switch), `/api/export` (the lead CSV) |
+
+Any path not listed is treated as admin. The webhook is public because Unipile has to reach it. It answers 401 unless the `Unipile-Auth` header equals `UNIPILE_WEBHOOK_SECRET`, compared in constant time, and 401 to everything when the secret is not set.
+
+### How it works
+
+- Set `WARM_ADMIN_PASSWORD` (12 characters or more) or `WARM_ADMIN_PASSWORD_HASH` (from `npm run hash-password -- 'your password'`). Without one, admin routes answer 503, admin pages go to `/login`, and `/login` says what to set.
+- `src/proxy.ts` checks every request. Each admin page, the root layout and each admin route handler checks again with the same function, so a path the matcher misses is still closed.
+- Sign-in compares the password in constant time. A session is a signed token in an httpOnly, SameSite=Lax cookie, Secure in production, valid for 8 hours. 5 wrong passwords from one address lock that address for 15 minutes. 40 wrong passwords from anywhere lock sign-in for everyone for 15 minutes.
+- Every state-changing admin request needs a same-origin `Origin` header and the per-session token in `x-warm-csrf`. The layout puts the token in a meta tag and the app's own calls send it.
+- Sending a LinkedIn message needs the session, the CSRF token, the id of the next item, and the hash of the text you reviewed. The server checks them against the outbox before it calls Unipile.
+- Live sending cannot be switched on without an admin password. The switch is an admin action and is recorded in the audit log with the session that did it.
+- Spend caps come from `spend.runCapUsd` and `spend.emailCapUsd` in the config. A run still shows its quote first and is refused when the quote is above the cap. There is a limit of 6 paid actions per session every 10 minutes.
+- Admin responses carry `Cache-Control: no-store`. All responses carry a Content-Security-Policy (`frame-ancestors 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. The CSP allows inline scripts because Next.js needs them.
+- The demo (`npm run demo`) has no sign-in and shows a "Demo, no sign-in" badge. It refuses to start next to a `LOOOT_TOKEN` or a state file unless an admin password is set.
+
+### Set it up
+
+```bash
+export WARM_ADMIN_PASSWORD='a password of 12 or more characters'
+# or keep it out of the environment as plain text:
+npm run hash-password -- 'a password of 12 or more characters'   # prints WARM_ADMIN_PASSWORD_HASH=...
+npm run build && npm start
+```
+
+A shared password is the floor. For anything people other than you can reach, put the app behind a VPN, a private network or an identity-aware proxy (Cloudflare Access, Tailscale, Google IAP, oauth2-proxy), and leave only the public routes in the table above reachable from the internet. Keep the app's password on as well. The rate limits are in memory, so behind several instances also limit at the proxy.
+
+### What changes when you upgrade
+
+- The web UI asks for the password. Set `WARM_ADMIN_PASSWORD` before you start 0.1.5, or the admin pages stay closed.
+- The config file has a new `spend` block. The run and email caps in the web UI come from it, and the cap box on the Inbox page is gone.
+- `outbox.dryRun: false` in the config now has no effect without an admin password. That applies to the CLI too: `warm outbox tick --live` needs `WARM_ADMIN_PASSWORD` in the environment.
+- Changing `outbox.dryRun` through the config save no longer works. Use the live-send switch on the Outbox page.
+
+### Not covered
+
+One admin, no per-user accounts or roles. The audit log records the live-send switch and live sends, not every sign-in. The CLI (`npm run warm`) has no sign-in: it runs as you on your machine and reads the same state file.
+
 ## Deploy
 
-There is no `vercel.json` and no Supabase. The app keeps its state in the JSON file `.looot-warm/state.json` (`WARM_DIR`). Vercel's filesystem does not persist between requests, so a Vercel deploy would lose your leads and outbox. Run the web UI on a machine with a disk, with your own auth in front: `npm run build && npm start`, with `LOOOT_TOKEN` (and the Unipile variables, if you use them) in the environment.
+There is no `vercel.json` and no Supabase. The app keeps its state in the JSON file `.looot-warm/state.json` (`WARM_DIR`). Vercel's filesystem does not persist between requests, so a Vercel deploy would lose your leads and outbox. Run the web UI on a machine with a disk: `npm run build && npm start`, with `LOOOT_TOKEN`, `WARM_ADMIN_PASSWORD` (and the Unipile variables, if you use them) in the environment, and serve it over HTTPS. Without `WARM_ADMIN_PASSWORD` the app serves no admin page. Read [Securing a deployment](#securing-a-deployment) first.
 
 ### Daily run on GitHub Actions
 
@@ -261,7 +317,7 @@ Six steps. Each one is confirmed in the code (`src/sender/unipile.ts`, `src/cli/
    ```
 
    Repeat with `"source":"users"` and another name. If `UNIPILE_DSN` already starts with `https://`, drop the `https://` in front of it.
-6. Go live, only when you want to. Review the drafts in the Outbox, approve them, set `outbox.dryRun` to `false` in the config, then send one at a time with `npm run warm -- outbox tick --live` or the "Send next now" button. Until then the sender only prints what it would send.
+6. Go live, only when you want to. Review the drafts in the Outbox, approve them, set `WARM_ADMIN_PASSWORD`, press "Turn on live sending" on the Outbox page (this sets `outbox.dryRun` to `false` and writes an audit entry), then send one at a time with the "Send next now" button or `npm run warm -- outbox tick --live`. Until then the sender only prints what it would send.
 
 **Sending volume is your responsibility under LinkedIn's terms.** LinkedIn limits automated activity and can restrict accounts that exceed it or look automated. Unipile publishes conservative limits (about 80 to 100 invitations a day and 200 a week on a paid account, about 100 profile reads a day, and random spacing during working hours). This app's defaults are lower, but they are only defaults: you set the numbers, and you decide what is acceptable for your account.
 
@@ -273,7 +329,7 @@ What the sender does:
 - Caps in `config/warm.config.json`: `dailyInvites` 20, `dailyMessages` 40 (follow-ups), `dailyProfileChecks` 20. Random gap of `minGapSeconds` to `maxGapSeconds` (120 to 480) after every send. A working-hours window (Monday to Friday, 09:00 to 18:00 at the UTC offset you set). A global pause switch. A do-not-contact list of hashes (LinkedIn URL, email or company domain). One send per tick.
 - A reply stops the sequence: every pending step for that lead is cancelled, and the reply shows on the lead page. Replies arrive by webhook (`/api/unipile/webhook`, which accepts a request only when its `Unipile-Auth` header equals `UNIPILE_WEBHOOK_SECRET`) or by `warm outbox sync`.
 - Sends are idempotent. The item is saved as "sending" before the network call. A definite refusal (HTTP 4xx) is "failed". A rate limit (429) puts the item back and pauses the queue for an hour. An answer the app cannot be sure about (network error, 5xx) becomes "unknown" and is never retried by the app, because the message may have gone out. You check LinkedIn and mark it sent or retry by hand. A second Add to outbox for a lead whose step already went out is refused.
-- `outbox.dryRun` is `true` by default. In dry-run, and without `--live`, `warm outbox tick` only prints what would be sent. Live sending needs all of: `UNIPILE_DSN`, `UNIPILE_API_KEY`, a connected account, `outbox.dryRun` set to `false`, and `--live` (or the Send next now button).
+- `outbox.dryRun` is `true` by default. In dry-run, and without `--live`, `warm outbox tick` only prints what would be sent. Live sending needs all of: `WARM_ADMIN_PASSWORD` (or the hash), `UNIPILE_DSN`, `UNIPILE_API_KEY`, a connected account, `outbox.dryRun` set to `false`, and `--live` (or the Send next now button). With no admin password the app reads `outbox.dryRun` as `true` whatever the config file says, and refuses to save `false`. In the web UI the send names the item and the hash of the text you reviewed; the server refuses it if the item is not the next one, or if the text no longer matches the approved hash. The switch and every live send are written to an audit log, shown on the Outbox page and stored in the state file under `audit`.
 - The account is connected only through Unipile's hosted auth link (`warm connect`, or the button on the Outbox page). This app never sees a LinkedIn password or cookie.
 
 Unipile endpoints used, from developer.unipile.com (read 2026-10-10): `POST /api/v1/hosted/accounts/link`, `GET /api/v1/users/{identifier}`, `POST /api/v1/users/invite`, `POST /api/v1/chats`, `GET /api/v1/chats/{chat_id}/messages`, `POST /api/v1/webhooks`. The header is `X-API-KEY`. `POST /api/v1/chats/{chat_id}/messages` is wrapped but the queue does not use it.

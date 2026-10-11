@@ -1,18 +1,19 @@
 {
   "name": "looot-warm-leads",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Open-source warm leads from LinkedIn intent signals. Find people engaging with competitors and topics, score them against your ICP with an explainable breakdown, find emails, draft messages. Next.js and looot.",
   "license": "MIT",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "demo": "WARM_DEMO=1 next dev -p 3281",
+    "demo": "node scripts/demoGuard.mjs && WARM_DEMO=1 next dev -p 3281",
     "build": "next build",
     "start": "next start",
     "warm": "tsx src/cli/cli.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit --incremental false",
     "lint": "eslint .",
+    "hash-password": "node scripts/hashPassword.mjs",
     "leak-scan": "bash scripts/leak-scan.sh ."
   },
   "dependencies": {
