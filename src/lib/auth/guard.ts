@@ -13,7 +13,7 @@ export type GateResult = { ok: true; policy: AdminPolicy; sid?: string } | { ok:
 export function sameOrigin(h: Headers): boolean {
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const origin = h.get("origin");
-  if (origin) {
+  if (origin && origin !== "null") {
     try {
       return !!host && new URL(origin).host === host;
     } catch {

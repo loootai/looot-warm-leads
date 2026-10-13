@@ -1,0 +1,18 @@
+{
+  "icp": {
+    "description": "Heads of growth, GTM engineers and founders at B2B software companies with 10 to 500 people who buy contact and company data.",
+    "titles": ["head of growth", "gtm engineer", "head of demand generation", "head of revenue operations", "founder", "vp marketing"],
+    "companySize": { "min": 10, "max": 500 }
+  },
+  "sources": {
+    "competitors": [
+      { "name": "Clay", "linkedinUrl": "https://www.linkedin.com/company/grow-with-clay" }
+    ],
+    "creators": [],
+    "keywords": ["clay alternative", "data enrichment api", "waterfall enrichment"],
+    "posts": []
+  },
+  "triggers": { "newRole": true, "hiring": false, "funding": false },
+  "limits": { "lookbackDays": 30, "postsPerSource": 3, "engagementPostsPerSource": 2, "engagersPerPost": 25, "maxEnrich": 30, "maxTriggerCompanies": 0, "concurrency": 3 },
+  "sender": { "name": "looot", "company": "looot", "offer": "one API key for business data for AI agents and GTM teams" }
+}

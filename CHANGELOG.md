@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix: sign-in from Chrome failed with 403 "Cross-site request refused". The `Referrer-Policy: no-referrer` header makes Chrome send `Origin: null`. The same-origin check now ignores a `null` origin and falls back to `Sec-Fetch-Site`.
+
 ## 0.1.6
 
 Spend limits, version 2. Before this, a paid run was limited by the cap per run, an in-memory rate limit and the token balance. Nothing limited spend across runs, two requests started together could both pass the cap, a key with the date in it made a repeat on a new day pay again, and a pending call was counted as $0. This covers both paid paths, the discovery run and the email lookup.

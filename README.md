@@ -1,3 +1,7 @@
+![looot-warm-leads: the inbox and a lead page from a live run on 2026-10-13, watching Clay's LinkedIn page and three topics, names hidden](docs/media/banner.png)
+
+Logos and names belong to their owners. Public data from a live run on 2026-10-13. No affiliation.
+
 # looot-warm-leads
 
 > **Security notice.** Versions 0.1.4 and older had no admin sign-in. Anyone who could reach a deployed instance could start paid looot runs, send LinkedIn messages through Unipile when dry-run was off, erase or export leads, and read the lead CSV. If you run 0.1.4 or older on a reachable host, upgrade to 0.1.5 and set `WARM_ADMIN_PASSWORD`. See [Securing a deployment](#securing-a-deployment).
@@ -6,7 +10,52 @@ Warm B2B leads from LinkedIn intent signals, on one [looot](https://looot.ai) ke
 
 You name competitors, creators and topics. It finds the people who commented on or reacted to their posts, who posted about the topic, who started a new role, or who work at a company that is hiring or just raised money. It reads their profiles, scores each person against your ICP, and ranks a daily list. Every score shows which signal added how many points, which provider supplied it, what it cost, and a link to check it. You pick leads, see the cost of the email lookup first, and get a verified work email. It drafts a first message that refers to the real signal. Export to CSV or to an Instantly import file. Sending on LinkedIn is optional and goes through your own Unipile account, see below.
 
-![Inbox, light](docs/screenshots/inbox-light.png)
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/card-inbox.png" alt="A ranked list of 16 warm leads with score, role, company and top signal, names hidden"></td>
+<td width="50%"><img src="docs/media/card-score.png" alt="A lead page with the score of 68 split into the signal and four fit checks, names hidden"></td>
+</tr>
+<tr>
+<td><img src="docs/media/card-quote.png" alt="The quote before a run: 5 steps, up to $0.13 at list price"></td>
+<td><img src="docs/media/card-sources.png" alt="Sources page with Clay's company page and three keywords"></td>
+</tr>
+<tr>
+<td><img src="docs/media/card-cost.png" alt="Cost page with a daily budget of $10 and $0.08 used"></td>
+<td><img src="docs/media/card-drafts.png" alt="Template message drafts that cite the real signal, names hidden"></td>
+</tr>
+</table>
+
+Every image comes from the running app on the data of the live run below and says "Live run · 2026-10-13". People's names are replaced with "name hidden" before each screenshot, and no email was looked up. The Sources page shows the config of the run, and the Cost page shows the real budget file.
+
+![A 22-second walkthrough: inbox, a lead page, sources, cost](docs/media/demo.gif)
+
+The same walkthrough as MP4: [docs/media/demo.mp4](docs/media/demo.mp4).
+
+## Live run: looot watching its own market
+
+`examples/looot-market.json` points the app at looot's market. It reads the posts of Clay's LinkedIn page (`linkedin.com/company/grow-with-clay`) and searches posts for "clay alternative", "data enrichment api" and "waterfall enrichment". The ICP is heads of growth, GTM engineers and founders at B2B software companies with 10 to 500 people. The run on 2026-10-13 (UTC) used `limits` of 3 posts per source, engagement on 2 posts per source and profile reads for the best 30 people, with a cap of $0.20.
+
+| | |
+|---|---|
+| Quote (upper bound) | $0.13 |
+| Charged | $0.079 |
+| Calls | 45, of which 43 were charged and 2 failed at $0 |
+| People found | 89 |
+| Profiles read | 30 |
+| On the list | 16 (4 warm, 12 cool, 0 hot) |
+
+What was good. The top four leads were founders or CEOs of small B2B firms, with a real signal each: two commented on a Clay partner post, two wrote a post about waterfall enrichment. Each score shows its points and links to the post.
+
+What was bad.
+- 9 of the 16 leads work at Clay. They commented on their own company's posts. The app does not drop people from the competitor you watch, so add the competitor's name to `icp.excludeTitles` or filter the list yourself.
+- 2 of 8 engagement calls came back as a provider error. They were not charged. Their posts gave no commenters.
+- Only 30 of 89 people were read. The other 59 never got a fit score, so the list is the best of a sample.
+- Most reactions on Clay's page are undated, so they score at half decay.
+- Company reads ran for 3 companies, not the 30 in the quote. The quote is an upper bound.
+- No email was looked up in this run. Email finding is quoted and run separately.
+
+The run shows real people, so every image hides names. The state file in `.looot-warm/` does hold them, and so does the CSV, so keep both private.
 
 ## What it is, and what it is not
 
@@ -14,7 +63,7 @@ It is a local tool: a Next.js app, a CLI and a daily GitHub Actions workflow on 
 
 It does not log in to LinkedIn, does not use a LinkedIn session cookie, and does not automate a browser. The intent data comes from public-data providers through looot. The optional LinkedIn sending goes only through Unipile's hosted auth.
 
-Nothing was run against live looot or Unipile accounts when this was built. See [status](#status).
+One live looot run was made. Nothing was run against a Unipile account. See [status](#status).
 
 ## What Gojiberry does, as read on 2026-10-10
 
@@ -386,7 +435,7 @@ Open an issue at https://github.com/loootai/looot-warm-leads/issues with the run
 
 ## Status
 
-- **No paid looot run was made.** The parsers for post lists, engagers, profiles, companies, jobs, funding, emails and verifier results are written from each endpoint's documented parameters and description and from fixtures I wrote. Field names in real responses may differ. A parse that finds nothing is reported as no data, not as a failure, so check the first real run by eye.
+- One paid looot run was made on 2026-10-13, see [Live run](#live-run-looot-watching-its-own-market). The post search, company posts, engagement and profile parsers worked on real responses. The company, job, funding, email and verifier parsers have not met a real response yet. A parse that finds nothing is reported as no data, not as a failure, so check the first real run by eye.
 - **No Unipile call was made.** There was no Unipile account. The client is tested against mocked HTTP built from Unipile's public docs, not against the service. The hosted auth callback, the webhook payloads and the chat flow are unverified against a live account.
 - **No Instantly import was tried.** The column format follows the field names in the `looot-instantly` repo and Instantly's documentation.
 - The web UI was exercised in demo mode and in headless Chrome screenshots. The live paths (real looot token, real Unipile) were not clicked through.
